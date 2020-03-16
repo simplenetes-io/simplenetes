@@ -1,0 +1,404 @@
+@clone: conf file string text ssh os
+
+_info:
+    title: Simplenetes version 0.1
+_env:
+    - PODPATH: ${PODPATH:-../pods}
+    - CLUSTERPATH: ${CLUSTERPATH:-$PWD}
+    - RUN: ${RUN:-HELP}
+      # Declaring these variables here to not throw undefined errors when in space mode.
+      # When exporting script for release these will be defined.
+    - REMOTE_PACK_RELEASEDATA:
+    - REMOTE_SET_COMMITCHAIN:
+    - REMOTE_ACQUIRE_LOCK:
+    - REMOTE_RELEASE_LOCK:
+    - REMOTE_GET_HOSTMETADATA:
+    - REMOTE_UPLOAD_ARCHIVE:
+    - REMOTE_UNPACK_ARCHIVE:
+    - REMOTE_INIT_HOST:
+    - REMOTE_HOST_SETUP:
+    - REMOTE_LOGS:
+    - REMOTE_DAEMON_LOG:
+    - REMOTE_CREATE_SUPERUSER:
+    - REMOTE_DISABLE_ROOT:
+cluster:
+    create_cluster:
+        _info:
+            title: Create a cluster repo
+            desc: |
+                This will create a cluster repo in the current directory.
+        _env:
+            - cluster:
+                title: Name of the cluster to create
+            - RUN: CLUSTER_CREATE -- "${cluster}"
+    sync:
+        _info:
+            title: Perform a full sync with the cluster
+            desc: |
+                Sync each host in the cluster to match the cluster project.
+        _env:
+            - forceSync:
+                title: Set to "1" to force a sync if it is a rollback or a branch out of the current git commit chain.
+                value: ${forceSync:-false}
+            - ignoreGitOps:
+                title: Set to "1" to not check git commit chain and cluster ID on host. Do not do this for production clusters.
+                value: ${ignoreGitOps:-false}
+            - RUN: CLUSTER_SYNC -- "${ignoreGitOps}" "${forceSync}"
+    _info:
+        title: The cluster management targets are used to sync files with hosts in the cluster.
+    status:
+        _info:
+            title: Get the current status of all pods in the cluster.
+            desc: |
+                Get the current run status of all pod versions for a pod,
+                on all hosts it is connected to.
+                Also show how current state compares to desired state.
+        _env:
+            - RUN: CLUSTER_STATUS
+    import_pod_config:
+        _info:
+            title: Import config templates from pod repo into the cluster project
+            desc: |
+                Copy files from the pod repos config directory into the cluster's config directory for this pod.
+                These files are most often template config files which exist in the pod repo as a guide in
+                how the pods container are configured using configs.
+                These template config files should not contain any actual config data related to runtime specifics nor
+                any secrets such as API keys.
+                Any sensitive data should be added/specified in the configs after they have been imported to the cluster
+                using this function.
+                After being imported to the cluster project from the pod and altered, then they are copied to each pod release
+                upon pod compilations, or also updated to existing pod releases in the cases it is appropiate to update configs for already running pod releases.
+        _env:
+            - pod:
+                title: Name of the pod for whom to import config templates for into the cluster.
+            - RUN: CLUSTER_IMPORT_POD_CFG -- "${pod}"
+    create_host:
+        _info:
+            title: Create a host in the cluster repo
+            desc: |
+                This will create the Host directory in the cluster repo and seed the two files needed.
+                This will not provision an actual Virtual Machine, that has to be done elsewhere and the SSH
+                parameters need to be set in the host.env file.
+        _env:
+            - host:
+                title: Name of the host to create in this cluster repo.
+            - jumphost:
+                title: Set the jumphost of this host, if any.
+                desc: |
+                    If set to "local" then this is not en SSH enabled virtual machine but rather a direct disk access on the laptop, which
+                    is used for working with local dev-clusters.
+            - expose:
+                title: Expose ports to the public internet
+                desc: |
+                    If no ports provided then the host will only be accessible on the internal network
+            - RUN: HOST_CREATE -- "${host}" "${jumphost}" "${expose}"
+
+
+    provision_host:
+
+        1_create_superuser:
+            _info:
+                title: Using the root account, create the super user on a host
+                desc: |
+                    When having create a new host, we need to create a super user on that host to provision it.
+                    Some cloud providers do create a superuser directly, some leave it at root account with password.
+                    If you already have a superuser, set the variable SUPERUSER=username in the host.env file and
+                    set the SUPERKEYFILE pointing to the keyfile of the superuser.
+            _env:
+                - host:
+                    title: Name of the host to create the super user on
+                - keyfile:
+                    title: If root account has a keyfile
+                - RUN: HOST_CREATE_SUPERUSER -- "${host}" "${keyfile}"
+
+        2_disable_root:
+            _info:
+                title: Using the super user account, disable the root account.
+            _env:
+                - host:
+                    title: Name of the host to disable root access on
+                - RUN: HOST_DISABLE_ROOT -- "${host}"
+
+        3_setup:
+            _info:
+                title: Using the superuser, create the regular user account, install podman, sntd and configure
+                desc: |
+                    Create the regular user, add the user pub key.
+                    Install podman, make sure it is configured.
+                    Configure kernel so that user can bind from port 1 and upwards.
+                    The daemon is installed in systemd and run as root.
+                    In each $HOME directory there can be a .simplenetes-daemon file
+                    which tells the daemon where to look for pods to manage for the user.
+            _env:
+                - host:
+                    title: Name of the host to setup
+                - RUN: HOST_SETUP -- "${host}"
+
+        4_init_host:
+            _info:
+                title: Using the regular user, initialize a host to be part of the cluster and configure the Daemon to manage it's pods
+                desc: |
+                    This will set the cluster ID on the host, marking it as part of this cluster.
+                    It will configure the ~/.simplenetes-daemon.conf file to point to the $HOSTHOME (which is defined in the host.env file).
+            _env:
+                - host:
+                    title: Name of the host to initialize onto this cluster
+                - force:
+                    title: Force change of clusterID if already set
+                    value: ${force:-false}
+                - RUN: HOST_INIT -- "${host}" "${force}"
+
+
+hosts:
+    _info:
+        title: The hosts targets are used to manipulate files in the host directories
+        desc: |
+            It does not sync with any cluster, it is solely local state management which is to be synced by the cluster target.
+    list:
+        _info:
+            title: List all hosts in this cluster project
+        _env:
+            - filter:
+                title: Show active/inactive/disabled
+                desc: |
+                    0=active, inactive and disabled
+                    1=active, and inactive
+                    2=only active
+                value: ${filter:-0}
+            - RUN: LIST_HOSTS -- "${filter}"
+    attach_pod:
+        _info:
+            title: Attach a Pod to a host, this does not deploy anything nor release anything
+            desc: |
+                This target creates a subdir with the pod name in the "pods" directory in the given host dir.
+                This is the only thing needed to create the attachment.
+                However the pod specs still needs to be imported and then rolled out to the host.
+                This function does not verify that the pod exists as a pod in the pods repo.
+        _env:
+            - pod:
+                title: Name of the pod
+            - host:
+                title: Name of the host to attach pod to
+            - RUN: ATTACH_POD -- "${host}" "${pod}"
+    detach_pod:
+        _info:
+            title: Remove a pod from a host
+            desc: |
+                This will remove the pod directory from a host.
+                This technically renames to pod directory to `.podname.unixts` so that there is a recovery option, if needed.
+                There will be no automatic sync or updating of loadbalancers.
+                When synced to the cluster, the pod will have its state set to "removed" on the host.
+        _env:
+            - pod:
+                title: Name of the pod to detach
+            - host:
+                title: Name of the host to detach the pod for
+            - RUN: DETACH_POD -- "${host}" "${pod}"
+    list_hosts_with_attached:
+        _info:
+            title: List all hosts who have a given pod attached
+        _env:
+            - pod:
+                title: Name of the pod for whom to list attached hosts
+            - RUN: LIST_HOSTS_BY_POD -- "${pod}"
+    list_attached_on_host:
+        _info:
+            title: List all pods attached to a specific host
+        _env:
+            - host:
+                title: Name of the host for whom to list attached pods
+            - RUN: LIST_PODS_BY_HOST -- "${host}"
+    compile_pod:
+        _info:
+            title: Compile the current pod version to all (or one) host(s) which it is already attached to.
+            desc: |
+                Compile a pod spec residing in the pods repo into all/one hosts to which it is already attached to.
+                A pod.yaml spec will be parsed and stored in the host pods/podname/version dir.
+                If the same version of the pod spec already exists on the host it will not be overwritten.
+                Even if the cluster.env file has updated to a newer version the final spec will still not be overwritten.
+                This is an idempotent command and it will not do anything if the pod version is already existing on a host.
+                This command will abort if the pod.yaml or the cluster.env files have are currenly in an edited but non committed state.
+        _env:
+            - pod:
+                title: The name of the pod to compile.
+            - host:
+                title: Optional name of the host to compile spec into, default is all hosts to which the pod is attached
+            - RUN: COMPILE_POD -- "${pod}" "${host}"
+    update_pod_config:
+        _info:
+            title: Re-copy the pod config in the cluster to a specific pod release.
+            desc: |
+                Copy the configs from the general pod config directory of this cluster into a specific pod release.
+                This is useful when you want to update an already released pods config volumes.
+                This replaces the pods current configs.
+                The pod release will need to be resynced with the cluster.
+        _env:
+            - pod:
+                title: The name of the pod to copy configs to.
+            - version:
+                title: pod release version
+            - host:
+                title: Optional name of a host, default is all.
+            - RUN: UPDATE_POD_CONFIG -- "${pod}" "${version}" "${host}"
+    set_pod_state:
+        _info:
+            title: Set the desired state of a specific pod version on one/all attached hosts.
+        _env:
+            - pod:
+                title: pod name
+            - version:
+                title: pod release version
+            - state:
+                title: The desired state of the pod version
+                values:
+                    - removed
+                    - stopped
+                    - running
+            - host:
+                title: Name of the host for which to set pod state on
+            - RUN: SET_POD_RELEASE_STATE -- "${pod}" "${version}" "${state}" "${host}"
+    get_pod_state:
+        _info:
+            title: Get the desired state of a pod release version for all attached hosts or one given host
+        _env:
+            - pod:
+                title: pod name
+            - version:
+                title: pod release version
+            - host:
+                title: Name of attached host, default is all attached hosts.
+            - RUN: GET_POD_RELEASE_STATE -- "${pod}" "${version}" "${host}"
+    generate_ingress_config:
+        _info:
+            title: Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
+            desc: |
+                This command will rewrite the configs for the ingress loadbalancer pods, but the configs must still be synced to the cluster.
+        _env:
+            - ingresspod:
+                title: Name of the ingress loadbalancer pod which's configs we will update default to 'ingress')
+            - excludeclusterports:
+                title: List of clusterPorts to exclude from the Ingress
+            - RUN: GEN_INGRESS_CONFIG "${ingresspod}" -- "${excludeclusterports}"
+    set_host_state:
+        _info:
+            title: Mark a specific host as active/inactive/disabled
+            desc: |
+                Inactive hosts are not part of sync, part of ingress generation
+                nor part of internal routing.
+                When Changing the state of a host the ingress should be regenerated.
+                also the ative host list should be updated on each active host.
+                An inactive host will get all it's pods removed upon sync.
+                An inactive host still gets pod compilations so it is
+                up to date when it is set active again.
+                A disabled host is totally ignored, will not get synced.
+        _env:
+            - host:
+                title: Name of the host for which to set the state for
+            - state:
+                title: The desired state of the pod version
+                values:
+                    - active
+                    - inactive
+                    - disabled
+            - RUN: SET_HOST_STATE -- "${host}" -- "${state}"
+    get_host_state:
+        _info:
+            title: Get a host's state
+        _env:
+            - host:
+                title: Name of the host for which to get the state for
+            - RUN: GET_HOST_STATE -- "${host}"
+    logs:
+        _info:
+            title: Get all logs for a pod
+        _env:
+            - pod:
+                title: Pod to get logs for
+            - podVersion:
+                title: Version of the pod
+            - host:
+                title: Name of the host for which to get the logs for. Default is all.
+            - tail:
+                title: tail number of lines
+            - since:
+                title: timestamp from since to get logs
+                desc: |
+                    Format 2006-01-02T15:04:05 or UNIX timestamp
+            - RUN: LOGS -- "${pod}" "${podVersion}" "${host}" "${tail}" "${since}"
+    daemon_log:
+        _info:
+            title: Get all logs for the systemd Daemon
+        _env:
+            - host:
+                title: Name of the host for which to get the logs for. Default is all.
+            - RUN: DAEMON_LOG -- "${host}"
+
+
+pods:
+    _info:
+        title: List all known pods in the PODPATH
+    list:
+        _info:
+            title: List all external pod specifications
+            desc: |
+                These are all the existing pod specifications in the associated pods directory.
+                This list does not say anything about which pods are attached to which hosts, if any.
+        _env:
+            - RUN: LIST_PODS
+
+
+cmdline:
+    _info:
+        title: Use snt as a standalone cmd line tool
+    _env:
+        - PODPATH: \${PODPATH:-\$PWD/../pods}
+        - CLUSTERPATH: \${CLUSTERPATH:-\$PWD}
+        - RUN: SNT_CMDLINE -- "\$@"
+
+
+_remote_plumbing:
+    _info:
+        desc: |
+            A set of commands used only for when compiling a release of this module into a standalone script file.
+    unpack_archive:
+        _env:
+            - RUN: _REMOTE_UNPACK_ARCHIVE -- "$@"
+    upload_archive:
+        _env:
+            - RUN: _REMOTE_UPLOAD_ARCHIVE -- "$@"
+    get_host_metadata:
+        _env:
+            - RUN: _REMOTE_GET_HOST_METADATA -- "$@"
+    pack_release_data:
+        _env:
+            - RUN: _REMOTE_PACK_RELEASE_DATA -- "$@"
+    release_lock:
+        _env:
+            - RUN: _REMOTE_RELEASE_LOCK -- "$@"
+    acquire_lock:
+        _env:
+            - RUN: _REMOTE_ACQUIRE_LOCK -- "$@"
+    set_commit_chain:
+        _env:
+            - RUN: _REMOTE_SET_COMMITCHAIN -- "$@"
+    init_host:
+        _env:
+            - RUN: _REMOTE_INIT_HOST -- "$@"
+    create_superuser:
+        _env:
+            - RUN: _REMOTE_CREATE_SUPERUSER -- "$@"
+    disable_root:
+        _env:
+            - SPACE_SUDO: sudo
+            - RUN: _REMOTE_DISABLE_ROOT -- "$@"
+    setup_host:
+        _env:
+            - SPACE_SUDO: sudo
+            - RUN: _REMOTE_HOST_SETUP -- "$@"
+    logs:
+        _env:
+            - RUN: _REMOTE_LOGS -- "$@"
+    daemon_log:
+        _env:
+            - SPACE_SUDO: sudo
+            - RUN: _REMOTE_DAEMON_LOG -- "$@"
