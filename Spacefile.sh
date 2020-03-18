@@ -2620,17 +2620,19 @@ _GET_TAG_DIR()
 # Copy configs from general cluster pod config store into this version of the pod.
 UPDATE_POD_CONFIG()
 {
-    SPACE_SIGNATURE="pod version [host]"
-    SPACE_DEP="PRINT _GET_TAG_DIR _DOES_HOST_EXIST _LIST_ATTACHEMENTS _LOG _COPY_POD_CONFIGS _CHKSUM_POD_CONFIGS"
+    SPACE_SIGNATURE="podAndVersion [host]"
+    SPACE_DEP="PRINT _GET_TAG_DIR _DOES_HOST_EXIST _LIST_ATTACHEMENTS _LOG _COPY_POD_CONFIGS _CHKSUM_POD_CONFIGS _FIND_POD_VERSION"
     SPACE_ENV="CLUSTERPATH"
 
-    local pod="${1}"
+    local podAndVersion="${1}"
     shift
 
-    # TODO: if version is not provided, check if there is a single running version released
-    # and we will default to that one.
-    local podVersion="${1}"
-    shift
+    local pod="${podAndVersion%:*}"
+
+    local podVersion0="${podAndVersion#*:}"
+    if [ -z "${podVersion0}" ] || [ "${podVersion0}" = "${podAndVersion}" ]; then
+        podVersion0="latest"
+    fi
 
     local host="${1:-}"
 
@@ -2662,8 +2664,13 @@ UPDATE_POD_CONFIG()
         return 1
     fi
 
+    local podVersion=
     local host=
     for host in ${hosts}; do
+        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${podVersion0}" "${host}")"; then
+            PRINT "Version ${podVersion0} not found on host ${host}. Skipping." "info" 0
+            continue
+        fi
         if [ -d "${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}" ]; then
             PRINT "Copy ${pod} configs from cluster into release ${podVersion} on host ${host}." "info" 0
             rm -rf "${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}/config"
@@ -2805,21 +2812,24 @@ LIST_PODS_BY_HOST()
 # Set the pod.version.state file
 SET_POD_RELEASE_STATE()
 {
-    SPACE_SIGNATURE="pod version state host:0"
-    SPACE_DEP="_LIST_ATTACHEMENTS _ENUM_STATE PRINT _LOG _DOES_HOST_EXIST"
+    SPACE_SIGNATURE="podAndVersion state [host]"
+    SPACE_DEP="_LIST_ATTACHEMENTS _ENUM_STATE PRINT _LOG _DOES_HOST_EXIST _FIND_POD_VERSION"
     SPACE_ENV="CLUSTERPATH"
 
-    local pod="${1}"
+    local podAndVersion="${1}"
     shift
 
-    local podVersion="${1}"
-    shift
+    local pod="${podAndVersion%:*}"
+
+    local podVersion0="${podAndVersion#*:}"
+    if [ -z "${podVersion0}" ] || [ "${podVersion0}" = "${podAndVersion}" ]; then
+        podVersion0="latest"
+    fi
 
     local state="${1}"
     shift
 
-    local host="${1}"
-    shift
+    local host="${1:-}"
 
     if ! _ENUM_STATE "${state}"; then
         PRINT "Given state is not a valid state: ${state}. Valid states are: removed, created, running, stopped" "error" 0
@@ -2844,14 +2854,20 @@ SET_POD_RELEASE_STATE()
         return 0
     fi
 
+    local podVersion=
     local host=
     for host in ${hosts}; do
+        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${podVersion0}" "${host}")"; then
+            PRINT "Version ${podVersion0} not found on host ${host}. Skipping." "info" 0
+            continue
+        fi
+
         local stateFile="pod.state"
         local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
         local targetPodStateFile="${targetPodDir}/${stateFile}"
 
         if [ ! -d "${targetPodDir}" ]; then
-            PRINT "Pod ${pod}:${podVersion} not found on host ${host}. Skipping." "info" 0
+            PRINT "Pod ${pod}:${podVersion} not found on host ${host}. Skipping." "warning" 0
             continue
         fi
 
@@ -2867,18 +2883,21 @@ SET_POD_RELEASE_STATE()
 # Return the pod.version.state file
 GET_POD_RELEASE_STATE()
 {
-    SPACE_SIGNATURE="pod version host:0"
-    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _GET_POD_RELEASE_STATE"
+    SPACE_SIGNATURE="podAndVersion [host]"
+    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _GET_POD_RELEASE_STATE _FIND_POD_VERSION"
     SPACE_ENV="CLUSTERPATH"
 
-    local pod="${1}"
+    local podAndVersion="${1}"
     shift
 
-    local podVersion="${1}"
-    shift
+    local pod="${podAndVersion%:*}"
 
-    local host="${1}"
-    shift
+    local podVersion0="${podAndVersion#*:}"
+    if [ -z "${podVersion0}" ] || [ "${podVersion0}" = "${podAndVersion}" ]; then
+        podVersion0="latest"
+    fi
+
+    local host="${1:-}"
 
     local hosts=
     if [ -n "${host}" ]; then
@@ -2893,17 +2912,23 @@ GET_POD_RELEASE_STATE()
     fi
     unset host
 
-    [ -z "${hosts}" ] && {
+    if [ -z "${hosts}" ]; then
         PRINT "Pod is not attached to any hosts." "warning" 0
-        return 0;
-    }
+        return
+    fi
 
+    local podVersion=
     local host=
     for host in ${hosts}; do
+        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${podVersion0}" "${host}")"; then
+            PRINT "Version ${podVersion0} not found on host ${host}. Skipping." "info" 0
+            continue
+        fi
+
         local state=
         if ! state="$(_GET_POD_RELEASE_STATE "${host}" "${pod}" "${podVersion}")"; then
-            PRINT "Version ${podVersion} not found on host ${host}. Skipping." "debug" 0
-            continue;
+            PRINT "Version ${podVersion} state not found on host ${host}. Skipping." "warning" 0
+            continue
         fi
         printf "%s: %s\\n" "${host}" "${state}"
     done
@@ -2978,21 +3003,23 @@ _HOST_DAEMON_LOG()
 # Connect to the cluster and retrieve logs for a pod instance.
 LOGS()
 {
-    SPACE_SIGNATURE="pod version host:0 [tail since]"
-    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _GET_POD_RELEASE_STATE _HOST_LOGS"
+    SPACE_SIGNATURE="podAndVersion [host tail since]"
+    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _GET_POD_RELEASE_STATE _HOST_LOGS _FIND_POD_VERSION"
     SPACE_ENV="CLUSTERPATH"
 
-    local pod="${1}"
+    local podAndVersion="${1}"
     shift
 
-    local podVersion="${1}"
-    shift
+    local pod="${podAndVersion%:*}"
 
-    local host="${1}"
-    shift
+    local podVersion0="${podAndVersion#*:}"
+    if [ -z "${podVersion0}" ] || [ "${podVersion0}" = "${podAndVersion}" ]; then
+        podVersion0="latest"
+    fi
 
-    local tail="${1:-}"
-    local since="${2:-}"
+    local host="${1:-}"
+    local tail="${2:-}"
+    local since="${3:-}"
 
     local hosts=
     if [ -n "${host}" ]; then
@@ -3001,22 +3028,28 @@ LOGS()
             return 1
         fi
 
-        hosts="${host}";
+        hosts="${host}"
     else
         hosts="$(_LIST_ATTACHEMENTS "${pod}")"
     fi
     unset host
 
-    [ -z "${hosts}" ] && {
+    if [ -z "${hosts}" ]; then
         PRINT "Pod is not attached to any hosts." "warning" 0
-        return 0;
-    }
+        return
+    fi
 
+    local podVersion=
     local host=
     for host in ${hosts}; do
+        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${podVersion0}" "${host}")"; then
+            PRINT "Version ${podVersion0} not found on host ${host}. Skipping." "info" 0
+            continue;
+        fi
+
         local state=
         if ! state="$(_GET_POD_RELEASE_STATE "${host}" "${pod}" "${podVersion}")"; then
-            PRINT "Version ${podVersion} not found on host ${host}. Skipping." "debug" 0
+            PRINT "Version ${podVersion} state not found on host ${host}. Skipping." "warning" 0
             continue;
         fi
         if [ "${state}" = "running" ] || [ "${state}" = "stopped" ]; then
@@ -3136,12 +3169,19 @@ _GET_POD_RUNNING_RELEASES()
 # Generate config for haproxy
 GEN_INGRESS_CONFIG()
 {
-    SPACE_SIGNATURE="[ingressPod excludeClusterPorts]"
+    SPACE_SIGNATURE="[ingressPodAndVersion excludeClusterPorts]"
     SPACE_DEP="PRINT _GET_TMP_DIR _LIST_HOSTS LIST_PODS_BY_HOST _EXTRACT_INGRESS _GET_POD_RUNNING_RELEASES STRING_ITEM_INDEXOF _GEN_INGRESS_CONFIG2 TEXT_EXTRACT_VARIABLES TEXT_VARIABLE_SUBST TEXT_FILTER STRING_IS_ALL"
     SPACE_ENV="CLUSTERPATH"
 
-    local ingressPod="${1:-ingress}"
+    local podAndVersion="${1:-ingress}"
     shift
+
+    local ingressPod="${podAndVersion%:*}"
+
+    local podVersion="${podAndVersion#*:}"
+    if [ -z "${podVersion}" ] || [ "${podVersion}" = "${podAndVersion}" ]; then
+        podVersion="latest"
+    fi
 
     local excludeClusterPorts="${1:-}"
 
@@ -3268,7 +3308,7 @@ GEN_INGRESS_CONFIG()
         # Different
         PRINT "Updating haproxy.cfg in ${ingressConfDir}" "ok" 0
         printf "%s\\n" "${haproxyConf}" >"${haproxyConfPath}"
-        PRINT "Now you need to run 'snt update-config ${ingressPod} <version>' and then 'snt sync' to put the updated ingress configuration live" "info" 0
+        PRINT "Now you need to run 'snt update-config ${ingressPod}:${podVersion}' and then 'snt sync' to put the updated ingress configuration live" "info" 0
     else
         PRINT "No changes in ingress to be made." "ok" 0
     fi
@@ -3820,6 +3860,41 @@ GET_HOST_STATE()
     printf "%s\\n" "${state}"
 }
 
+_FIND_POD_VERSION()
+{
+    SPACE_SIGNATURE="pod podVersion host"
+    SPACE_ENV="CLUSTERPATH"
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local host="${1}"
+    shift
+
+    local dir="${CLUSTERPATH}/${host}/pods/${pod}/release"
+
+    if [ ! -d "${dir}" ]; then
+        return 1
+    fi
+
+    if [ "${podVersion}" = "latest" ]; then
+        podVersion="$(cd "${dir}" && find . -maxdepth 1 -type d |cut -b3- |grep -v "-" |sort -t. -k1,1n -k2,2n -k3,3n |tail -n1)"
+    fi
+
+    if [ -z "${podVersion}" ]; then
+        return 1
+    fi
+
+    if [ ! -d "${dir}/${podVersion}" ]; then
+        return 1
+    fi
+
+    printf "%s\\n" "${podVersion}"
+}
+
 _LOG()
 {
     SPACE_SIGNATURE="host pod action"
@@ -3915,11 +3990,11 @@ _SHOW_USAGE()
         Compile the current pod version to all (or one) host(s) which it is already attached to.
         If host is left out then compile on all hosts which have the pod attached.
 
-    update-config pod version [host]
+    update-config pod[:version] [host]
         Re-copy the pod config in the cluster to a specific pod release.
         If host is left out then copy configs to all hosts which have the pod attached.
 
-    set-pod-state pod version state [host]
+    set-pod-state pod[:version] state [host]
         Set the desired state of a specific pod version on one/all attached hosts.
         state options are:
             removed
@@ -3927,11 +4002,11 @@ _SHOW_USAGE()
             running
         If host is left out then set state for pod on all hosts which the pod is attached to.
 
-    get-pod-state pod version [host]
+    get-pod-state pod[:version] [host]
         Get the desired state of a specific pod version on one/all attached hosts.
         If host is left out then set state for pod on all hosts which the pod is attached to.
 
-    generate-ingress [ingresspod excludeClusterPorts]
+    generate-ingress [ingresspod[:version] excludeClusterPorts]
         Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
         ingressPod
             name of the ingress pod, defaults to 'ingress'.
@@ -3948,7 +4023,7 @@ _SHOW_USAGE()
     get-host-state host
         Get a the state of a host
 
-    logs pod version [host tail since]
+    logs pod[:version] [host tail since]
         tail is number of lines to tail
         since is timestamp to get from, ex: 2006-01-02T15:04:05 or UNIX ts
 
@@ -4065,33 +4140,33 @@ SNT_CMDLINE()
         fi
         COMPILE_POD "${1}" "${2:-}"
     elif [ "${action}" = "update-config" ]; then
-        if [ $# -lt 2 ]; then
-            printf "%s\\n" "Missing arguments: pod version [host]"
+        if [ $# -lt 1 ]; then
+            printf "%s\\n" "Missing arguments: pod[:version] [host]"
             return 1
         fi
-        UPDATE_POD_CONFIG "${1}" "${2}" "${3:-}"
+        UPDATE_POD_CONFIG "${1}" "${2:-}"
     elif [ "${action}" = "set-pod-state" ]; then
-        if [ $# -lt 3 ]; then
-            printf "%s\\n" "Missing arguments: pod version state [host]"
+        if [ $# -lt 2 ]; then
+            printf "%s\\n" "Missing arguments: pod[:version] state [host]"
             return 1
         fi
-        SET_POD_RELEASE_STATE "${1}" "${2}" "${3}" "${4:-}"
+        SET_POD_RELEASE_STATE "${1}" "${2}" "${3:-}"
     elif [ "${action}" = "get-pod-state" ]; then
         if [ $# -lt 2 ]; then
             printf "%s\\n" "Missing arguments: pod version [host]"
             return 1
         fi
-        GET_POD_RELEASE_STATE "${1}" "${2}" "${3:-}"
+        GET_POD_RELEASE_STATE "${1}" "${2:-}"
     elif [ "${action}" = "logs" ]; then
-        if [ $# -lt 2 ]; then
-            printf "%s\\n" "Missing arguments: pod version [host tail since]"
+        if [ $# -lt 1 ]; then
+            printf "%s\\n" "Missing arguments: pod[:version] [host tail since]"
             return 1
         fi
-        LOGS "${1}" "${2}" "${3:-}" "${4:-}" "${5:-}"
+        LOGS "${1}" "${2:-}" "${3:-}" "${4:-}"
     elif [ "${action}" = "daemon-log" ]; then
         DAEMON_LOG "${1:-}"
     elif [ "${action}" = "generate-ingress" ]; then
-        GEN_INGRESS_CONFIG "${1:-ingress}" "${2:-}"
+        GEN_INGRESS_CONFIG "${1:-}" "${2:-}"
     elif [ "${action}" = "set-host-state" ]; then
         if [ $# -lt 2 ]; then
             printf "%s\\n" "Missing arguments: host state"

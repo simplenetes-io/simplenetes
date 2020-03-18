@@ -239,40 +239,40 @@ hosts:
                 The pod release will need to be resynced with the cluster.
         _env:
             - pod:
-                title: The name of the pod to copy configs to.
-            - version:
-                title: pod release version
+                title: The name (and version) of the pod to copy configs to: pod:version
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
             - host:
                 title: Optional name of a host, default is all.
-            - RUN: UPDATE_POD_CONFIG -- "${pod}" "${version}" "${host}"
+            - RUN: UPDATE_POD_CONFIG -- "${pod}" "${host}"
     set_pod_state:
         _info:
             title: Set the desired state of a specific pod version on one/all attached hosts.
         _env:
             - pod:
-                title: pod name
-            - version:
-                title: pod release version
+                title: The name (and version) of the pod, as pod:version
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
             - state:
-                title: The desired state of the pod version
+                title: The desired state of the pod release
                 values:
                     - removed
                     - stopped
                     - running
             - host:
                 title: Name of the host for which to set pod state on
-            - RUN: SET_POD_RELEASE_STATE -- "${pod}" "${version}" "${state}" "${host}"
+            - RUN: SET_POD_RELEASE_STATE -- "${pod}" "${state}" "${host}"
     get_pod_state:
         _info:
             title: Get the desired state of a pod release version for all attached hosts or one given host
         _env:
             - pod:
-                title: pod name
-            - version:
-                title: pod release version
+                title: The name (and version) of the pod, as pod:version
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
             - host:
                 title: Name of attached host, default is all attached hosts.
-            - RUN: GET_POD_RELEASE_STATE -- "${pod}" "${version}" "${host}"
+            - RUN: GET_POD_RELEASE_STATE -- "${pod}" "${host}"
     generate_ingress_config:
         _info:
             title: Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
@@ -283,7 +283,7 @@ hosts:
                 title: Name of the ingress loadbalancer pod which's configs we will update default to 'ingress')
             - excludeclusterports:
                 title: List of clusterPorts to exclude from the Ingress
-            - RUN: GEN_INGRESS_CONFIG "${ingresspod}" -- "${excludeclusterports}"
+            - RUN: GEN_INGRESS_CONFIG -- "${ingresspod}" "${excludeclusterports}"
     set_host_state:
         _info:
             title: Mark a specific host as active/inactive/disabled
@@ -300,7 +300,7 @@ hosts:
             - host:
                 title: Name of the host for which to set the state for
             - state:
-                title: The desired state of the pod version
+                title: The desired state of the host
                 values:
                     - active
                     - inactive
@@ -318,9 +318,7 @@ hosts:
             title: Get all logs for a pod
         _env:
             - pod:
-                title: Pod to get logs for
-            - podVersion:
-                title: Version of the pod
+                title: Pod to get logs for, as: pod[:version]
             - host:
                 title: Name of the host for which to get the logs for. Default is all.
             - tail:
@@ -329,7 +327,7 @@ hosts:
                 title: timestamp from since to get logs
                 desc: |
                     Format 2006-01-02T15:04:05 or UNIX timestamp
-            - RUN: LOGS -- "${pod}" "${podVersion}" "${host}" "${tail}" "${since}"
+            - RUN: LOGS -- "${pod}" "${host}" "${tail}" "${since}"
     daemon_log:
         _info:
             title: Get all logs for the systemd Daemon
