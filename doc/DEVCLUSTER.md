@@ -132,10 +132,6 @@ Note that the same `clusterPorts` are usually not shared between different pods,
 Cluster ports come in the range of `abc-xyz`.
 
 ### 4. Compile the pod
-The pod cannot compile of the pod project ha uncommitted changed or if the cluster project has uncommited changes.
-This is because the git commit IDs are used in logfiles ina GitOps fashion.
-The flag `-e ignoredirty=true` can be set to allow for uncomitted changes, but should not be set in production mode.
-
 From inside the `dev-cluster` dir, type:  
 ```sh
 snt compile webserver
@@ -218,10 +214,10 @@ git commit -m "Update webserver configs"
 ```
 
 ```sh
-# This will copy the config into the released pod on each Host it is attached to.
-# Note that the version number must match the pod release.
+# This will copy the config into the lest released pod on each Host it is attached to.
+# Note that the version number is implicit as "snt webserver:latest". `snt` will find the latest released version (it will ignore any prerelease version such as "0.1.0-beta1").
 cd dev-cluster
-snt update-config webserver 0.0.1
+snt update-config webserver
 ```
 
 We need to commit our changes before we sync:  
@@ -275,11 +271,11 @@ Find the hostPort of this new pod in the same way as before.
 
 Alright, now you have two versions of the same pod running. Both these pods will be sharing any incoming traffic from the cluster since they use the same clusterPort (but we still haven't added the proxy or the ingress pod, so no incoming traffic in that sense).
 
-If we are happy with our new release, we can then retire the previous version.
+If we are happy with our new release, we can then retire the previous version. In this case we *must* provide the pod version we want to retire, sine the default is to use the latest release if no version if given.
 
 ```sh
 cd dev-cluster
-snt set-pod-state webserver 0.0.1 removed
+snt set-pod-state webserver:0.0.1 removed
 ```
 
 We need to commit our changes before we sync:  
