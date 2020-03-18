@@ -118,12 +118,14 @@ These configs we now can tune and tailor to the needs of the cluster. Every time
 There is one last configuration we will need to make for when attaching this pod. If you look in the `pod.yaml` file in the webserver pod you can see two variables: `${HOSTPORTAUTO1}` and `${clusterPortWebserver}`.
 These variables are defined in the `pod.env` file alongside the `pod.yaml` file and they are used when compiling single pods which are not attached to a cluster repo. However, when using pods in a cluster we need to define those variables in the cluster-wide `cluster-vars.env` file instead. The `pod.env` file will be ignored when attaching pods to clusters.
 
-There is one special case of variables and that is those who look like `${HOSTPORTAUTOxyz}`, those we will typically not define in `cluster-vars.env` because Simplenetes will assign those values depending on which host ports are already taken on each Host. So we simply leave out `${HOSTPORTAUTO1}` and just add `${clusterPortWebserver}` as:  
+There is one special case of variables and that is those who look like `${HOSTPORTAUTOxyz}`, those we will not define in `cluster-vars.env` because Simplenetes will assign those values depending on which host ports are already taken on each Host. So we simply leave out `${HOSTPORTAUTO1}` and just add `${clusterPort}` with the pod name as prefix, as:  
 
 From inside the `dev-cluster` dir, type:  
 ```sh
-echo "clusterPortWebserver=2020" >>"cluster-vars.env"
+echo "webserver_clusterPort=2020" >>"cluster-vars.env"
 ```
+
+All variables for pods which get defined in the cluster wide `cluster-vars.env` file must be prefixed with the pod name, this is to avoid clashes of common variable name, however variable names which are all `CAPS` are not to be prefixed and are treated as globals, this is because some variables should be shared between pods, such as the `DEVMODE` variable.
 
 Clusterports are used to map a containers port to a cluster-wide port so that other pods in the cluster can connect to it.
 Note that the same `clusterPorts` are usually not shared between different pods, but often between different version of the same pod.  

@@ -3,9 +3,9 @@
 _info:
     title: Simplenetes version 0.1
 _env:
-    - PODPATH: ${PODPATH:-../pods}
     - CLUSTERPATH: ${CLUSTERPATH:-$PWD}
-    - RUN: ${RUN:-HELP}
+    - PODPATH: ${PODPATH:-\${CLUSTERPATH\}/../pods}
+    - RUN_ALIAS: /help/
       # Declaring these variables here to not throw undefined errors when in space mode.
       # When exporting script for release these will be defined.
     - REMOTE_PACK_RELEASEDATA:
@@ -21,6 +21,11 @@ _env:
     - REMOTE_DAEMON_LOG:
     - REMOTE_CREATE_SUPERUSER:
     - REMOTE_DISABLE_ROOT:
+help:
+    _env:
+        - SPACE_ENV: CLUSTERPATH PODPATH
+        - RUN_ALIAS: !unset
+        - RUN: ${RUN:-HELP}
 cluster:
     create_cluster:
         _info:

@@ -2175,7 +2175,7 @@ LIST_HOSTS()
 ATTACH_POD()
 {
     SPACE_SIGNATURE="host pod"
-    SPACE_DEP="PRINT _DOES_HOST_EXIST _IS_POD_ATTACHED _LOG _LIST_ATTACHEMENTS"
+    SPACE_DEP="PRINT _DOES_HOST_EXIST _IS_POD_ATTACHED _LOG _LIST_ATTACHEMENTS STRING_IS_ALL"
     SPACE_ENV="CLUSTERPATH"
 
     local host="${1}"
@@ -2183,6 +2183,11 @@ ATTACH_POD()
 
     local pod="${1}"
     shift
+
+    if ! STRING_IS_ALL "${pod}" "a-z0-9_" || [ "${pod#[_0-9]}" != "${pod}" ]; then
+        PRINT "Invalid pod name. Only 0-9, lowercase a-z and underscore is allowed. Name cannot begin with underscore or digit" "error" 0
+        return 1
+    fi
 
     if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
         PRINT "Host ${host} does not exist." "error" 0
@@ -2193,6 +2198,8 @@ ATTACH_POD()
         PRINT "Pod ${pod} already exists on host ${host}." "error" 0
         return 1
     fi
+
+    # TODO: find the pod.yaml and extract variables and store them to cluster-vars.env
 
     if ! mkdir -p "${CLUSTERPATH}/${host}/pods/${pod}"; then
         PRINT "Could not create directory." "error" 0
@@ -2308,15 +2315,15 @@ CLUSTER_IMPORT_POD_CFG()
 # Compiles a pod to all hosts it is attached to.
 COMPILE_POD()
 {
-    SPACE_SIGNATURE="pod host:0"
-    SPACE_DEP="PRINT _LIST_ATTACHEMENTS _LOG _GET_TAG_FILE _DOES_HOST_EXIST STRING_SUBST STRING_TRIM UPDATE_POD_CONFIG _GET_TAG_DIR STRING_ESCAPE _GET_FREE_HOSTPORT TEXT_FILTER TEXT_VARIABLE_SUBST TEXT_EXTRACT_VARIABLES _COPY_POD_CONFIGS _CHKSUM_POD_CONFIGS FILE_REALPATH _LIST_ATTACHEMENTS STRING_ITEM_INDEXOF"
+    SPACE_SIGNATURE="pod [host]"
+    SPACE_DEP="PRINT _LIST_ATTACHEMENTS _LOG _GET_TAG_FILE _DOES_HOST_EXIST STRING_SUBST STRING_TRIM UPDATE_POD_CONFIG _GET_TAG_DIR STRING_ESCAPE _GET_FREE_HOSTPORT TEXT_FILTER TEXT_VARIABLE_SUBST TEXT_EXTRACT_VARIABLES _COPY_POD_CONFIGS _CHKSUM_POD_CONFIGS FILE_REALPATH _LIST_ATTACHEMENTS STRING_ITEM_INDEXOF STRING_IS_ALL"
     SPACE_ENV="CLUSTERPATH PODPATH"
 
     local pod="${1}"
     shift
 
-    local host="${1}"
-    shift
+    local host="${1:-}"
+    #shift
 
     local attachedHosts="$(_LIST_ATTACHEMENTS "${pod}")"
 
@@ -2387,26 +2394,32 @@ COMPILE_POD()
         # Perform variable substitution
         ## 1. Extract variables used in pod.yaml file
         ## 2. Inspect those to see if any are ${HOSTPORTAUTOxyz}, then for each 'xyz' we find a free host port on the host to assign that variable.
-        ## 3. Load cluster variables from cluster config, apply all HOSTPORTAUTOxyz variables from previous step.
-        ## 4. Substitute each variable in pod.yaml with value from variables in step 3.
-        ## Note: If wanting to use default values such as ${var:-default}, then such a subsequent step can be added to parse again after the first substitution.
+        ## 3. Prefix any variables naames in pod.yaml with "podname_".
+        ## 4. Run first sweep of substitution.
+        ## 5. Load cluster variables from cluster-vars.env
+        ## 6. Run second sweep of variable substituation on pod.yaml
 
         local text="$(cat "${podSpec}")"
         local variablesToSubst="$(TEXT_EXTRACT_VARIABLES "${text}")"
         local newline="
 "
-        STRING_SUBST "variablesToSubst" "${newline}" " " 1
 
-        # For each ${HOSTPORTAUTOxyz} we define that variable now.
-        local variablesToSubst2=""  # Use this to filter out HOSTPORTAUTOx variables, just for display
-        local values=""
-        local newPorts=""
+        # For each ${HOSTPORTAUTOxyz} we find free host ports and substitute that.
+        local variablesAll=""       # For show, all variables read from cluster-vars.env
+        local variablesToSubst2=""  # Use this to save variable names for the second sweep of substitutions.
+        local values=""             # Values to substitute in first sweep
+        local newPorts=""           # To keep track of already assigned ports
         local varname=
         for varname in ${variablesToSubst}; do
-            local hpindex="${varname#HOSTPORTAUTO}"
-            if [ "${varname}" != "${hpindex}" ]; then
-                # This is a auto host port assignment,
-                # we need to find a port and assign the variable.
+            # Do sanity check on the variable name extracted.
+            if ! STRING_IS_ALL "${varname}" "A-Za-z0-9_" || [ "${varname#[_0-9]}" != "${varname}" ]; then
+                PRINT "Variable name '${varname}' contains illegal characters. Only [A-Za-z0-9_] are allowed, and cannot begin with underscore or digit." "error" 0
+                status=1
+                break 2
+            fi
+            if [ "${varname#HOSTPORTAUTO}" != "${varname}" ]; then
+                # This is an auto host port assignment,
+                # we need to find a free port and assign the variable.
                 local newport=
                 if ! newport="$(_GET_FREE_HOSTPORT "${host}" "${newPorts}")"; then
                     PRINT "Could not acquire a free port on the host ${host}." "error" 0
@@ -2416,17 +2429,34 @@ COMPILE_POD()
                 newPorts="${newPorts} ${newport}"
                 values="${values}${values:+${newline}}${varname}=${newport}"
             else
-                variablesToSubst2="${variablesToSubst2}${variablesToSubst2:+ }${varname}"
+                # This is user defined variable, check if it is global or pod specific.
+                # Global variables are shared between pods and are all CAPS.
+                # Variables which are not all caps are expected to have the pod name as a prefix as defined in cluster-vars.env, because they are pod specific.
+                if STRING_IS_ALL "${varname}" "A-Z0-9_"; then
+                    # All CAPS, just substitute it with it's value from cluster-vars.env, added later.
+                    variablesAll="${variablesAll}${variablesAll:+, }${varname}"
+                else
+                    # Not all caps, prefix the variable name defined in pod.yaml with "podname_", as it is defined in cluster-vars.env
+                    # The actual value substituation will happen in the second sweep.
+                    values="${values}${values:+${newline}}${varname}=\$\{${pod}_${varname}\}"
+                    # Save the variable name to subst for the second sweep
+                    variablesToSubst2="${variablesToSubst2}${variablesToSubst2:+ }${pod}_${varname}"
+                    variablesAll="${variablesAll}${variablesAll:+ }${pod}_${varname}"
+                fi
             fi
         done
 
-        PRINT "Variable names extracted from pod.yaml and read from cluster-vars.env: ${variablesToSubst2}" "info" 0
+        PRINT "Host ports auto generated:${newPorts}" "info" 0
+        PRINT "Variable names extracted from pod.yaml and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
 
-        # Note: we could also allow host specific vars, but it might not be needed
-        values="${values}${values:+${newline}}$(cat "${clusterConfig}")"
-
-        ## For each variable identified in pod.yaml, iterate over it and substitute it for it's value
+        # For each variable identified in pod.yaml, iterate over it and substitute it for its value
+        # Do a first sweep, substituting auto host ports, substituting CAPS global variable for values and adding prefix to all other variables.
+        values="${values}${newline}$(cat "${clusterConfig}")"
         text="$(TEXT_VARIABLE_SUBST "${text}" "${variablesToSubst}" "${values}")"
+
+        # Second sweep of substitutions
+        local values2="$(cat "${clusterConfig}")"
+        text="$(TEXT_VARIABLE_SUBST "${text}" "${variablesToSubst2}" "${values2}")"
         text="$(printf "%s\\n" "${text}" |TEXT_FILTER)"
 
         local podVersion="$(printf "%s\\n" "${text}" |grep -o "^podVersion:[ ]*['\"]\?\([0-9]\+\.[0-9]\+\.[0-9]\+\(-[-.a-z0-9]\+\)\?\)")"
@@ -2473,7 +2503,7 @@ COMPILE_POD()
             fi
         fi
 
-        if ! podc "${pod}" "${tmpPodSpec}" "${targetPodSpec}" "${podSpec%/*}" "false"; then
+        if ! SPACE_LOG_LEVEL="${SPACE_LOG_LEVEL}" podc "${pod}" "${tmpPodSpec}" "${targetPodSpec}" "${podSpec%/*}" "false"; then
             status=1
             break
         fi
@@ -2590,18 +2620,19 @@ _GET_TAG_DIR()
 # Copy configs from general cluster pod config store into this version of the pod.
 UPDATE_POD_CONFIG()
 {
-    SPACE_SIGNATURE="pod version host:0"
+    SPACE_SIGNATURE="pod version [host]"
     SPACE_DEP="PRINT _GET_TAG_DIR _DOES_HOST_EXIST _LIST_ATTACHEMENTS _LOG _COPY_POD_CONFIGS _CHKSUM_POD_CONFIGS"
     SPACE_ENV="CLUSTERPATH"
 
     local pod="${1}"
     shift
 
+    # TODO: if version is not provided, check if there is a single running version released
+    # and we will default to that one.
     local podVersion="${1}"
     shift
 
-    local host="${1}"
-    shift
+    local host="${1:-}"
 
     if [ ! -d "${CLUSTERPATH}/_config/${pod}" ]; then
         PRINT "_config/${pod} does not exist in cluster, maybe import them first?" "error" 0
@@ -3106,7 +3137,7 @@ _GET_POD_RUNNING_RELEASES()
 GEN_INGRESS_CONFIG()
 {
     SPACE_SIGNATURE="[ingressPod excludeClusterPorts]"
-    SPACE_DEP="PRINT _GET_TMP_DIR _LIST_HOSTS LIST_PODS_BY_HOST _EXTRACT_INGRESS _GET_POD_RUNNING_RELEASES STRING_ITEM_INDEXOF _GEN_INGRESS_CONFIG2 TEXT_EXTRACT_VARIABLES TEXT_VARIABLE_SUBST TEXT_FILTER"
+    SPACE_DEP="PRINT _GET_TMP_DIR _LIST_HOSTS LIST_PODS_BY_HOST _EXTRACT_INGRESS _GET_POD_RUNNING_RELEASES STRING_ITEM_INDEXOF _GEN_INGRESS_CONFIG2 TEXT_EXTRACT_VARIABLES TEXT_VARIABLE_SUBST TEXT_FILTER STRING_IS_ALL"
     SPACE_ENV="CLUSTERPATH"
 
     local ingressPod="${1:-ingress}"
@@ -3190,18 +3221,43 @@ GEN_INGRESS_CONFIG()
 
     # Perform variable substitution on conf.
     local variablesToSubst="$(TEXT_EXTRACT_VARIABLES "${haproxyConf}")"
-    local clusterConfig="${CLUSTERPATH}/cluster-vars.env"
-    local values="$(cat "${clusterConfig}")"
 
-    # Check so that all variables are present
+    # First sweep
+    # Go over all variable names and for those who are not all CAPS we prefix the variables
+    # names with podname and underscore.
+    local newline="
+"
+    local variablesToSubst2=""
+    local variablesAll=""
+    local values=""
     local varname=
     for varname in ${variablesToSubst}; do
-        if ! printf "%s\\n" "${values}" |grep -m 1 "^${varname}=" >/dev/null; then
-            PRINT "Missing variable definition of ${varname} in cluster-vars.env" "warning" 0
+        if ! STRING_IS_ALL "${varname}" "A-Za-z0-9_" || [ "${varname#[_0-9]}" != "${varname}" ]; then
+            PRINT "Variable name '${varname}' contains illegal characters. Only [A-Za-z0-9_] are allowed, and cannot begin with underscore or digit." "error" 0
+            return 1
+        fi
+        if STRING_IS_ALL "${varname}" "A-Z0-9_"; then
+            # All CAPS, just substitute it with it's value from cluster-vars.env (added later).
+            variablesAll="${variablesAll}${variablesAll:+, }${varname}"
+        else
+            # Not all caps, prefix the variable name with "podname_", as it is defined in cluster-vars.env
+            # The actual value substituation will happen in the second sweep.
+            values="${values}${values:+${newline}}${varname}=\$\{${ingressPod}_${varname}\}"
+            # Save the variable name to subst for the second sweep
+            variablesToSubst2="${variablesToSubst2}${variablesToSubst2:+ }${ingressPod}_${varname}"
+            variablesAll="${variablesAll}${variablesAll:+ }${ingressPod}_${varname}"
         fi
     done
 
+    PRINT "Variable names extracted from haproxy.conf and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
+
+    local clusterConfig="${CLUSTERPATH}/cluster-vars.env"
+    values="${values}${newline}$(cat "${clusterConfig}")"
     haproxyConf="$(TEXT_VARIABLE_SUBST "${haproxyConf}" "${variablesToSubst}" "${values}")"
+
+    # Second and final sweep
+    local values2="$(cat "${clusterConfig}")"
+    haproxyConf="$(TEXT_VARIABLE_SUBST "${haproxyConf}" "${variablesToSubst2}" "${values2}")"
     haproxyConf="$(printf "%s\\n" "${haproxyConf}" |TEXT_FILTER)"
 
     # Save conf in ingress pod cfg, if changed.
@@ -3212,6 +3268,7 @@ GEN_INGRESS_CONFIG()
         # Different
         PRINT "Updating haproxy.cfg in ${ingressConfDir}" "ok" 0
         printf "%s\\n" "${haproxyConf}" >"${haproxyConfPath}"
+        PRINT "Now you need to run 'snt update-config ${ingressPod} <version>' and then 'snt sync' to put the updated ingress configuration live" "info" 0
     else
         PRINT "No changes in ingress to be made." "ok" 0
     fi
