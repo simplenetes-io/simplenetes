@@ -6,10 +6,15 @@ CLUSTER_CREATE()
     local cluster="${1}"
     shift
 
+    if [ "${cluster}" = "pods" ] || [ "${cluster}" = "keys" ]; then
+        PRINT "pods and keys are reserved names" "error" 0
+        return 1
+    fi
+
     local CLUSTERPATH="${PWD}/${cluster}"
 
     if [ -e "${CLUSTERPATH}" ]; then
-        PRINT "Cluster directory already exists." "error" 0
+        PRINT "Cluster directory already exists" "error" 0
         return 1
     fi
 
@@ -77,7 +82,7 @@ _CLUSTER_SYNC_RM_TMP_FILES()
 
 CLUSTER_SYNC()
 {
-    SPACE_SIGNATURE="ignoreGitOps forceSync"
+    SPACE_SIGNATURE="[forceSync quite]"
     SPACE_ENV="CLUSTERPATH"
     SPACE_DEP="PRINT _IS_CLUSTER_CLEAN _GET_CLUSTER_GIT_COMMIT_CHAIN _GET_CLUSTER_ID _HOST_GET_METADATA _HOST_SYNC _OUTPUT_HOST_SYNC_INFO _HOST_ACQUIRE_LOCK _HOST_RELEASE_LOCK _LOG_C _LIST_HOSTS _KILL_SUBPROCESSES _CLUSTER_SYNC_MK_TMP_FILES _CLUSTER_SYNC_RM_TMP_FILES"
 
@@ -100,10 +105,10 @@ CLUSTER_SYNC()
     #           ii) For all releases existing on both sides check if state file has changed, is so sync them.
     #   11.  Mark host as "synced ready".
 
-    local ignoreGitOps="${1:-false}"
+    local forceSync="${1:-false}"
     shift $(($# > 0 ? 1 : 0))
 
-    local forceSync="${1:-false}"
+    local quite="${1:-false}"
     shift $(($# > 0 ? 1 : 0))
 
     local hosts=
@@ -129,86 +134,85 @@ CLUSTER_SYNC()
         return 1
     fi
 
-    if [ "${ignoreGitOps}" = "true" ]; then
-        PRINT "Ignoring GitOps procedures. This is not recommended in production environments!" "warning" 0
-        gitCommitChain="<unknown>"
-    else
-        # Perform step 1 to 4
-        if ! _IS_CLUSTER_CLEAN; then
-            PRINT "The cluster git project is not clean and committed. Cannot continue until it is." "error" 0
-            _CLUSTER_SYNC_RM_TMP_FILES "${list}"
-            return 1
-        fi
-
-        if ! gitCommitChain="$(_GET_CLUSTER_GIT_COMMIT_CHAIN)"; then
-            PRINT "Cannot get the git commit chain in this cluster project." "error" 0
-            _CLUSTER_SYNC_RM_TMP_FILES "${list}"
-            return 1
-        fi
-
-        # Get the cluster metadata for each host.
-        local host=
-        local tmpFile=
-        local tuple=
-        for tuple in ${list}; do
-            host="${tuple%:*}"
-            tmpFile="${tuple#*:}"
-            local hostClusterMeta=
-            if ! hostClusterMeta="$(_HOST_GET_METADATA "${host}")"; then
-                PRINT "Could not communicate with host: ${host}. If this host is to be out of rotation first disable it, if this is a temporary hickup in the network run this command again in a while." "error" 0
-                _CLUSTER_SYNC_RM_TMP_FILES "${list}"
-                return 1
-            fi
-
-            # Check to remote has the same cluster ID.
-            local remoteClusterID="${hostClusterMeta%%[ ]*}"
-            if [ "${remoteClusterID}" != "${clusterID}" ]; then
-                PRINT "cluster ID of local project and on host ${host} do not match! Aborting. Maybe the host has to be initiated first?" "error" 0
-                _CLUSTER_SYNC_RM_TMP_FILES "${list}"
-                return 1
-            fi
-
-            # Check so that remote git commit chain is behind or on HEAD.
-            local remoteChain="${hostClusterMeta#*[ ]}"
-            local remainder="${gitCommitChain#${remoteChain}}"
-            local remainder2="${remoteChain#${gitCommitChain}}"
-
-            if [ -z "${remoteChain}" ]; then
-                # Fall through
-                :
-            elif [ -n "${remainder2}" ] && [ "${remainder2}" != "${remoteChain}" ]; then
-                if [ "${forceSync}" = "true" ]; then
-                    PRINT "Force syncing a rollback." "warning" 0 2>>"${tmpFile}"
-                    # Fall through
-                else
-                    PRINT "Host ${host} HEAD is in front of what we are syncing! If this is a rollback you need to force it." "error" 0
-                    _CLUSTER_SYNC_RM_TMP_FILES "${list}"
-                    return 1
-                fi
-            elif [ -z "${remainder}" ]; then
-                # We are on HEAD.
-                PRINT "Host already on HEAD, checking for updates anyways (idempotent)." "info" 0 2>>"${tmpFile}"
-                # Fall through
-            elif [ "${remainder}" = "${gitCommitChain}" ]; then
-                # This is a branch, throw error
-                if [ "${forceSync}" = "true" ]; then
-                    PRINT "Force syncing a branch onto host." "warning" 0 2>>"${tmpFile}"
-                    # Fall through
-                else
-                    PRINT "You are trying to sync a branched commit chain to host ${host}. You could force this update to reset the commit chain on host, but it can be dangerous." "error" 0
-                    _CLUSTER_SYNC_RM_TMP_FILES "${list}"
-                    return 1
-                fi
-            else
-                local previousCommit="${remoteChain##*[ ]}"
-                local head="${gitCommitChain##*[ ]}"
-                PRINT "Syncing host up from commit \"${previousCommit}\" to the following HEAD: \"${head}\"" "info" 0 2>>"${tmpFile}"
-                # Fall through
-            fi
-            unset hostClusterMeta
-        done
-        unset host
+    # Perform step 1 to 4
+    if ! _IS_CLUSTER_CLEAN; then
+        PRINT "The cluster git project is not clean and committed. Cannot continue until it is." "error" 0
+        _CLUSTER_SYNC_RM_TMP_FILES "${list}"
+        return 1
     fi
+
+    if ! gitCommitChain="$(_GET_CLUSTER_GIT_COMMIT_CHAIN)"; then
+        PRINT "Cannot get the git commit chain in this cluster project." "error" 0
+        _CLUSTER_SYNC_RM_TMP_FILES "${list}"
+        return 1
+    fi
+
+    # Get the cluster metadata for each host.
+    local host=
+    local tmpFile=
+    local tuple=
+    for tuple in ${list}; do
+        host="${tuple%:*}"
+        tmpFile="${tuple#*:}"
+        local hostClusterMeta=
+        if ! hostClusterMeta="$(_HOST_GET_METADATA "${host}")"; then
+            PRINT "Could not communicate with host: ${host}. If this host is to be out of rotation first disable it, if this is a temporary hickup in the network run this command again in a while." "error" 0
+            _CLUSTER_SYNC_RM_TMP_FILES "${list}"
+            return 1
+        fi
+
+        # Check to remote has the same cluster ID.
+        local remoteClusterID="${hostClusterMeta%%[ ]*}"
+        if [ "${remoteClusterID}" != "${clusterID}" ]; then
+            PRINT "cluster ID of local project and on host ${host} do not match! Aborting. Maybe the host has to be initiated first?" "error" 0
+            _CLUSTER_SYNC_RM_TMP_FILES "${list}"
+            return 1
+        fi
+
+        # Check so that remote git commit chain is behind or on HEAD.
+        local remoteChain="${hostClusterMeta#*[ ]}"
+        local remainder="${gitCommitChain#${remoteChain}}"
+        local remainder2="${remoteChain#${gitCommitChain}}"
+        PRINT "Remainder: ${remainder}" "debug" 0
+
+        if [ -z "${remoteChain}" ]; then
+            # Fall through
+            :
+        elif [ -n "${remainder2}" ] && [ "${remainder2}" != "${remoteChain}" ]; then
+            if [ "${forceSync}" = "true" ]; then
+                PRINT "Force syncing a rollback." "warning" 0 2>>"${tmpFile}"
+                # Fall through
+            else
+                PRINT "Host ${host} HEAD is in front of what we are syncing! If this is a rollback you need to force it." "error" 0
+                _CLUSTER_SYNC_RM_TMP_FILES "${list}"
+                return 1
+            fi
+        elif [ -z "${remainder}" ]; then
+            # We are on HEAD.
+            PRINT "Host already on HEAD, checking for updates anyways (idempotent)." "info" 0 2>>"${tmpFile}"
+            # Fall through
+        elif [ "${remainder}" = "${gitCommitChain}" ]; then
+            # This is a branch, throw error
+            if [ "${forceSync}" = "true" ]; then
+                PRINT "Force syncing a branch onto host." "warning" 0 2>>"${tmpFile}"
+                # Fall through
+            else
+                PRINT "You are trying to sync a branched commit chain to host ${host}. You could force this update to reset the commit chain on host, but it can be dangerous." "error" 0
+                PRINT "Local chain: ${gitCommitChain}" "debug" 0
+                PRINT "Remote chain: ${remoteChain}" "debug" 0
+                PRINT "Remainder: ${remainder}" "debug" 0
+                _CLUSTER_SYNC_RM_TMP_FILES "${list}"
+                return 1
+            fi
+        else
+            local previousCommit="${remoteChain##*[ ]}"
+            local head="${gitCommitChain##*[ ]}"
+            PRINT "Syncing host up from commit \"${previousCommit}\" to the following HEAD: \"${head}\"" "info" 0 2>>"${tmpFile}"
+            # Fall through
+        fi
+        unset hostClusterMeta
+    done
+    unset host
 
     # Get a lock on all hosts.
     local randomToken="$(awk 'BEGIN{min=1;max=65535;srand(); print int(min+rand()*(max-min+1))}')"
@@ -280,7 +284,9 @@ CLUSTER_SYNC()
             break
         fi
         # Output to TTY ongoing updates.
-        _OUTPUT_HOST_SYNC_INFO "${list}"
+        if [ "${quite}" != "true" ]; then
+            _OUTPUT_HOST_SYNC_INFO "${list}"
+        fi
         sleep 1
         for pid in ${pids}; do
             if kill -0 "${pid}" 2>/dev/null; then
@@ -810,11 +816,11 @@ _REMOTE_DAEMON_LOG()
     journalctl -u sntd
 }
 
-_REMOTE_LOGS()
+_REMOTE_SIGNAL()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
-    SPACE_SIGNATURE="[hosthome pod podVersion tail since]"
-    SPACE_DEP="_GET_TMP_FILE STRING_SUBST PRINT"
+    SPACE_SIGNATURE="[hosthome pod podVersion container]"
+    SPACE_DEP="STRING_SUBST PRINT"
 
     local HOSTHOME="${1}"
     shift
@@ -826,8 +832,77 @@ _REMOTE_LOGS()
     local podVersion="${1}"
     shift
 
-    local tail="${1:-}"
-    local since="${2:-}"
+    local podFile="${HOSTHOME}/pods/${pod}/release/${podVersion}/pod"
+
+    if [ ! -f "${podFile}" ]; then
+        PRINT "Missing pod: ${pod}:${podVersion}" "error" 0
+        return 1
+    fi
+
+    ${podFile} signal "$@"
+}
+
+_REMOTE_POD_STATUS()
+{
+    # Arguments are actually not optional, but we do this so the exporting goes smoothly.
+    SPACE_SIGNATURE="[hosthome pod podVersion query]"
+    SPACE_DEP="STRING_SUBST PRINT"
+
+    local HOSTHOME="${1}"
+    shift
+    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local query="${1}"
+    shift
+
+    local podFile="${HOSTHOME}/pods/${pod}/release/${podVersion}/pod"
+
+    if [ ! -f "${podFile}" ]; then
+        PRINT "Missing pod: ${pod}:${podVersion}" "error" 0
+        return 10
+    fi
+
+    if [ "${query}" = "readiness" ]; then
+        if ${podFile} readiness; then
+            printf "ready\\n"
+        else
+            printf "not-ready\\n"
+        fi
+    else
+        ${podFile} status
+    fi
+}
+
+_REMOTE_LOGS()
+{
+    # Arguments are actually not optional, but we do this so the exporting goes smoothly.
+    SPACE_SIGNATURE="[hosthome pod podVersion timestamp limit streams]"
+    SPACE_DEP="STRING_SUBST PRINT"
+
+    local HOSTHOME="${1}"
+    shift
+    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local timestamp="${1}"
+    shift
+
+    local limit="${1}"
+    shift
+
+    local streams="${1}"
+    shift
 
     local podFile="${HOSTHOME}/pods/${pod}/release/${podVersion}/pod"
 
@@ -1940,7 +2015,7 @@ _HOST_SSH_CONNECT()
 {
     SPACE_SIGNATURE="host action [args]"
     # This env variable can be baked in at compile time if we want this module to be standalone
-    SPACE_ENV="CLUSTERPATH REMOTE_PACK_RELEASEDATA=$ REMOTE_SET_COMMITCHAIN=$ REMOTE_ACQUIRE_LOCK=$ REMOTE_RELEASE_LOCK=$ REMOTE_GET_HOSTMETADATA=$ REMOTE_UPLOAD_ARCHIVE=$ REMOTE_UNPACK_ARCHIVE=$ REMOTE_INIT_HOST=$ REMOTE_HOST_SETUP=$ REMOTE_LOGS=$ REMOTE_DAEMON_LOG=$ REMOTE_CREATE_SUPERUSER=$ REMOTE_DISABLE_ROOT=$"
+    SPACE_ENV="CLUSTERPATH REMOTE_PACK_RELEASEDATA=$ REMOTE_SET_COMMITCHAIN=$ REMOTE_ACQUIRE_LOCK=$ REMOTE_RELEASE_LOCK=$ REMOTE_GET_HOSTMETADATA=$ REMOTE_UPLOAD_ARCHIVE=$ REMOTE_UNPACK_ARCHIVE=$ REMOTE_INIT_HOST=$ REMOTE_HOST_SETUP=$ REMOTE_LOGS=$ REMOTE_DAEMON_LOG=$ REMOTE_CREATE_SUPERUSER=$ REMOTE_DISABLE_ROOT=$ REMOTE_SIGNAL=$ REMOTE_POD_STATUS=$"
     SPACE_DEP="SSH PRINT STRING_TRIM"
 
     local host="${1}"
@@ -2035,6 +2110,16 @@ _HOST_SSH_CONNECT()
         "logs")
             if [ -n "${REMOTE_LOGS}" ]; then
                 RUN="${REMOTE_LOGS}"
+            fi
+            ;;
+        "pod_status")
+            if [ -n "${REMOTE_POD_STATUS}" ]; then
+                RUN="${REMOTE_POD_STATUS}"
+            fi
+            ;;
+        "signal")
+            if [ -n "${REMOTE_SIGNAL}" ]; then
+                RUN="${REMOTE_SIGNAL}"
             fi
             ;;
         "daemon-log")
@@ -2163,26 +2248,32 @@ Try: /pods/list/
 
 LIST_HOSTS()
 {
-    SPACE_SIGNATURE="[filter]"
+    SPACE_SIGNATURE="[all showState]"
     SPACE_DEP="_LIST_HOSTS"
     SPACE_ENV="CLUSTERPATH"
 
+    local all="${1:-false}"
+    local showState="${2:-false}"
+
     local filter="${1:-0}"
 
-    _LIST_HOSTS "${CLUSTERPATH}" "${filter}"
+    _LIST_HOSTS "${CLUSTERPATH}" "${filter}" "${showState}"
 }
 
 ATTACH_POD()
 {
-    SPACE_SIGNATURE="host pod"
-    SPACE_DEP="PRINT _DOES_HOST_EXIST _IS_POD_ATTACHED _LOG _LIST_ATTACHEMENTS STRING_IS_ALL"
+    SPACE_SIGNATURE="podTuple"
+    SPACE_DEP="PRINT _DOES_HOST_EXIST _IS_POD_ATTACHED _LOG _LIST_ATTACHEMENTS STRING_IS_ALL _SPLIT_POD_TRIPLE"
     SPACE_ENV="CLUSTERPATH"
 
-    local host="${1}"
-    shift
+    local podTuple="${1}"
 
-    local pod="${1}"
-    shift
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTuple}"; then
+        return 1
+    fi
 
     if ! STRING_IS_ALL "${pod}" "a-z0-9_" || [ "${pod#[_0-9]}" != "${pod}" ]; then
         PRINT "Invalid pod name. Only 0-9, lowercase a-z and underscore is allowed. Name cannot begin with underscore or digit" "error" 0
@@ -2222,36 +2313,53 @@ ATTACH_POD()
 
 DETACH_POD()
 {
-    SPACE_SIGNATURE="host pod"
-    SPACE_DEP="PRINT _DOES_HOST_EXIST _IS_POD_ATTACHED _LOG _LIST_ATTACHEMENTS"
+    SPACE_SIGNATURE="podTuple"
+    SPACE_DEP="PRINT _DOES_HOST_EXIST _IS_POD_ATTACHED _LOG _LIST_ATTACHEMENTS _SPLIT_POD_TRIPLE"
     SPACE_ENV="CLUSTERPATH"
 
-    local host="${1}"
-    shift
+    local podTuple="${1}"
 
-    local pod="${1}"
-    shift
-
-    if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
-        PRINT "Host ${host} does not exist." "error" "info" 0
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTuple}"; then
         return 1
     fi
 
-    if ! _IS_POD_ATTACHED "${CLUSTERPATH}" "${host}" "${pod}"; then
-        PRINT "Pod ${pod} does not exist on host." "error" 0
+    local attachedHosts="$(_LIST_ATTACHEMENTS "${pod}")"
+
+    if [ -z "${attachedHosts}" ]; then
+        PRINT "Pod '${pod}' is not attached to this cluster." "error" 0
         return 1
     fi
 
-    local ts="$(date +%s)"
-
-    _LOG "${host}" "${pod}" "DETACHED"
-
-    if ! mv "${CLUSTERPATH}/${host}/pods/${pod}" "${CLUSTERPATH}/${host}/pods/.${pod}.${ts}"; then
-        PRINT "Unexpected disk failure when detaching pod." "error" 0
-        return 1
+    local hosts=
+    if [ -n "${host}" ]; then
+        if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+            PRINT "Host ${host} does not exist." "error" 0
+            return 1
+        fi
+        if ! STRING_ITEM_INDEXOF "${attachedHosts}" "${host}"; then
+            PRINT "Pod '${pod}' is not attached to host '${host}'." "error" 0
+            return 1
+        fi
+        hosts="${host}"
+    else
+        hosts="${attachedHosts}"
     fi
+    unset host
 
-    PRINT "Pod was detached" "ok" 0
+    local host=
+    for host in ${hosts}; do
+        local ts="$(date +%s)"
+        if ! mv "${CLUSTERPATH}/${host}/pods/${pod}" "${CLUSTERPATH}/${host}/pods/.${pod}.${ts}"; then
+            PRINT "Unexpected disk failure when detaching pod." "error" 0
+            return 1
+        fi
+
+        PRINT "Pod '${pod}' detached from '${host}'" "ok" 0
+        _LOG "${host}" "${pod}" "DETACHED"
+    done
 
     # Check if this was the last pod on the hosts, if so suggest to remove any pod configs in the cluster.
     local hosts=
@@ -2315,15 +2423,21 @@ CLUSTER_IMPORT_POD_CFG()
 # Compiles a pod to all hosts it is attached to.
 COMPILE_POD()
 {
-    SPACE_SIGNATURE="pod [host]"
-    SPACE_DEP="PRINT _LIST_ATTACHEMENTS _LOG _GET_TAG_FILE _DOES_HOST_EXIST STRING_SUBST STRING_TRIM UPDATE_POD_CONFIG _GET_TAG_DIR STRING_ESCAPE _GET_FREE_HOSTPORT TEXT_FILTER TEXT_VARIABLE_SUBST TEXT_EXTRACT_VARIABLES _COPY_POD_CONFIGS _CHKSUM_POD_CONFIGS FILE_REALPATH _LIST_ATTACHEMENTS STRING_ITEM_INDEXOF STRING_IS_ALL"
+    SPACE_SIGNATURE="podTuple [verbose]"
+    SPACE_DEP="PRINT _LIST_ATTACHEMENTS _LOG _GET_TAG_FILE _DOES_HOST_EXIST STRING_SUBST STRING_TRIM UPDATE_POD_CONFIG _GET_TAG_DIR STRING_ESCAPE _GET_FREE_HOSTPORT TEXT_FILTER TEXT_VARIABLE_SUBST TEXT_EXTRACT_VARIABLES _COPY_POD_CONFIGS _CHKSUM_POD_CONFIGS FILE_REALPATH _LIST_ATTACHEMENTS STRING_ITEM_INDEXOF STRING_IS_ALL _SPLIT_POD_TRIPLE"
     SPACE_ENV="CLUSTERPATH PODPATH"
 
-    local pod="${1}"
+    local podTuple="${1}"
     shift
 
-    local host="${1:-}"
-    #shift
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTuple}"; then
+        return 1
+    fi
+
+    local verbose="${1:-false}"
 
     local attachedHosts="$(_LIST_ATTACHEMENTS "${pod}")"
 
@@ -2355,7 +2469,7 @@ COMPILE_POD()
     unset host
 
     if [ -z "${hosts}" ]; then
-        PRINT "Pod ${pod} is not attached to any hosts." "warning" 0
+        PRINT "Pod ${pod} is not attached to any host." "warning" 0
         return 0
     fi
 
@@ -2474,7 +2588,7 @@ COMPILE_POD()
 
         if [ -d "${targetPodDir}" ]; then
             PRINT "Pod ${pod} version ${podVersion} already exists on host ${host}. Skipping." "info" 0
-            continue;
+            continue
         fi
 
         if ! mkdir -p "${targetPodDir}"; then
@@ -2510,7 +2624,7 @@ COMPILE_POD()
 
         # Checksum configs, we do this after compiling since comilation can add to configs.
         if [ -d "${CLUSTERPATH}/_config/${pod}" ]; then
-            PRINT "Checksum configs in release." "info" 0
+            PRINT "Checksum configs in release." "debug" 0
             if ! _CHKSUM_POD_CONFIGS "${CLUSTERPATH}" "${host}" "${pod}" "${podVersion}"; then
                 status=1
                 break
@@ -2531,6 +2645,10 @@ COMPILE_POD()
             rm -rf "${dir}"
         done
         return 1
+    fi
+
+    if [ "${verbose}" = "true" ] && [ -n "${podsCompiled}" ]; then
+        printf "%s\\n" "${podVersion}"
     fi
 }
 
@@ -2620,21 +2738,19 @@ _GET_TAG_DIR()
 # Copy configs from general cluster pod config store into this version of the pod.
 UPDATE_POD_CONFIG()
 {
-    SPACE_SIGNATURE="podAndVersion [host]"
-    SPACE_DEP="PRINT _GET_TAG_DIR _DOES_HOST_EXIST _LIST_ATTACHEMENTS _LOG _COPY_POD_CONFIGS _CHKSUM_POD_CONFIGS _FIND_POD_VERSION"
+    SPACE_SIGNATURE="podTriple"
+    SPACE_DEP="PRINT _GET_TAG_DIR _DOES_HOST_EXIST _LIST_ATTACHEMENTS _LOG _COPY_POD_CONFIGS _CHKSUM_POD_CONFIGS _FIND_POD_VERSION _SPLIT_POD_TRIPLE"
     SPACE_ENV="CLUSTERPATH"
 
-    local podAndVersion="${1}"
+    local podTriple="${1}"
     shift
 
-    local pod="${podAndVersion%:*}"
-
-    local podVersion0="${podAndVersion#*:}"
-    if [ -z "${podVersion0}" ] || [ "${podVersion0}" = "${podAndVersion}" ]; then
-        podVersion0="latest"
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTriple}"; then
+        return 1
     fi
-
-    local host="${1:-}"
 
     if [ ! -d "${CLUSTERPATH}/_config/${pod}" ]; then
         PRINT "_config/${pod} does not exist in cluster, maybe import them first?" "error" 0
@@ -2655,7 +2771,7 @@ UPDATE_POD_CONFIG()
     unset host
 
     if [ -z "${hosts}" ]; then
-        PRINT "Pod ${pod} is not attached to any hosts." "warning" 0
+        PRINT "Pod ${pod} is not attached to any host." "warning" 0
         return 0
     fi
 
@@ -2667,8 +2783,8 @@ UPDATE_POD_CONFIG()
     local podVersion=
     local host=
     for host in ${hosts}; do
-        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${podVersion0}" "${host}")"; then
-            PRINT "Version ${podVersion0} not found on host ${host}. Skipping." "info" 0
+        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            #PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
             continue
         fi
         if [ -d "${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}" ]; then
@@ -2809,30 +2925,98 @@ LIST_PODS_BY_HOST()
     (cd "${CLUSTERPATH}" && find . -maxdepth 4 -mindepth 4 -regex "^./${host}/pods/[^.][^/]*/log\.txt$" |cut -d/ -f4)
 }
 
-# Set the pod.version.state file
-SET_POD_RELEASE_STATE()
+# Set the pod.ingress.conf file active/inactive
+SET_POD_INGRESS_STATE()
 {
-    SPACE_SIGNATURE="podAndVersion state [host]"
-    SPACE_DEP="_LIST_ATTACHEMENTS _ENUM_STATE PRINT _LOG _DOES_HOST_EXIST _FIND_POD_VERSION"
+    SPACE_SIGNATURE="state podTriple [podTriples]"
+    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _LOG _DOES_HOST_EXIST _FIND_POD_VERSION _SPLIT_POD_TRIPLE"
     SPACE_ENV="CLUSTERPATH"
-
-    local podAndVersion="${1}"
-    shift
-
-    local pod="${podAndVersion%:*}"
-
-    local podVersion0="${podAndVersion#*:}"
-    if [ -z "${podVersion0}" ] || [ "${podVersion0}" = "${podAndVersion}" ]; then
-        podVersion0="latest"
-    fi
 
     local state="${1}"
     shift
 
-    local host="${1:-}"
+    if [ "${state}" = "active" ] || [ "${state}" = "inactive" ]; then
+        # All good, fall through
+        :
+    else
+        PRINT "State must be active or inactive" "error" 0
+        return 1
+    fi
 
-    if ! _ENUM_STATE "${state}"; then
-        PRINT "Given state is not a valid state: ${state}. Valid states are: removed, created, running, stopped" "error" 0
+    local podTriple=
+    for podTriple in "$@"; do
+        local pod=
+        local version=
+        local host=
+        if ! _SPLIT_POD_TRIPLE "${podTriple}"; then
+            return 1
+        fi
+
+        local hosts=
+        if [ -n "${host}" ]; then
+            if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+                PRINT "Host ${host} does not exist." "error" 0
+                return 1
+            fi
+
+            hosts="${host}"
+        else
+            hosts="$(_LIST_ATTACHEMENTS "${pod}")"
+        fi
+        unset host
+
+        if [ -z "${hosts}" ]; then
+            PRINT "Pod '${pod}' is not attached to any host." "warning" 0
+            continue
+        fi
+
+        local podVersion=
+        local host=
+        for host in ${hosts}; do
+            if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+                PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
+                continue
+            fi
+
+            local ingressConfFile="pod.ingress.conf"
+            local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
+            local targetPodIngressConfFile="${targetPodDir}/${ingressConfFile}"
+
+            if [ ! -d "${targetPodDir}" ]; then
+                PRINT "Pod ${pod}:${podVersion} not found on host ${host}. Skipping." "warning" 0
+                continue
+            fi
+
+            PRINT "Set ingress state of release ${podVersion} on host ${host} to ${state}." "ok" 0
+
+            if [ "${state}" = "active" ]; then
+                if [ -f "${targetPodIngressConfFile}.inactive" ]; then
+                    mv "${targetPodIngressConfFile}.inactive" "${targetPodIngressConfFile}"
+                fi
+            else
+                if [ -f "${targetPodIngressConfFile}" ]; then
+                    mv "${targetPodIngressConfFile}" "${targetPodIngressConfFile}.inactive"
+                fi
+            fi
+
+            _LOG "${host}" "${pod}" "SET_POD_INGRESS_STATE release:${podVersion}=${state}"
+        done
+    done
+}
+
+SIGNAL_POD()
+{
+    SPACE_SIGNATURE="podTriple [container]"
+    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _FIND_POD_VERSION _SPLIT_POD_TRIPLE _SIGNAL_POD"
+    SPACE_ENV="CLUSTERPATH"
+
+    local podTriple="${1}"
+    shift
+
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTriple}"; then
         return 1
     fi
 
@@ -2850,54 +3034,226 @@ SET_POD_RELEASE_STATE()
     unset host
 
     if [ -z "${hosts}" ]; then
-        PRINT "Pod is not attached to any hosts." "warning" 0
-        return 0
+        PRINT "Pod '${pod}' is not attached to any host." "error" 0
+        return 1
     fi
 
     local podVersion=
     local host=
     for host in ${hosts}; do
-        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${podVersion0}" "${host}")"; then
-            PRINT "Version ${podVersion0} not found on host ${host}. Skipping." "info" 0
+        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
             continue
         fi
-
-        local stateFile="pod.state"
-        local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
-        local targetPodStateFile="${targetPodDir}/${stateFile}"
-
-        if [ ! -d "${targetPodDir}" ]; then
-            PRINT "Pod ${pod}:${podVersion} not found on host ${host}. Skipping." "warning" 0
-            continue
+        local state="$(_GET_POD_RELEASE_STATE "${host}" "${pod}" "${podVersion}")"
+        if [ "${state}" = "running" ]; then
+            PRINT "Signal ${pod}:${podVersion}@${host} $@" "info" 0
+            _SIGNAL_POD "${pod}" "${podVersion}" "$@"
+        else
+            PRINT "Pod ${pod}:${podVersion} is not in the running state" "warning" 0
         fi
-
-
-        PRINT "Set state of release ${podVersion} on host ${host} to ${state}." "ok" 0
-
-        printf "%s\\n" "${state}" >"${targetPodStateFile}"
-
-        _LOG "${host}" "${pod}" "SET_POD_RELEASE_STATE release:${podVersion}=${state}"
     done
+}
+
+_SIGNAL_POD()
+{
+    SPACE_SIGNATURE="pod podVersion [container]"
+    SPACE_DEP="_HOST_SSH_CONNECT PRINT"
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local i=
+    local status=
+    # Try one times before failing
+    for i in 1; do
+        _HOST_SSH_CONNECT "${host}" "signal" "${pod}" "${podVersion}" "$@"
+        status="$?"
+        if [ "${status}" -eq 0 ]; then
+            return 0
+        elif [ "${status}" -eq 10 ]; then
+            break
+        fi
+    done
+
+    PRINT "Could not signal pod on host." "error" 0
+
+    # Failed
+    return 1
+}
+
+# Set the pod.version.state file
+SET_POD_RELEASE_STATE()
+{
+    SPACE_SIGNATURE="state podTriple [podTriples]"
+    SPACE_DEP="_LIST_ATTACHEMENTS _ENUM_STATE PRINT _LOG _DOES_HOST_EXIST _FIND_POD_VERSION _SPLIT_POD_TRIPLE"
+    SPACE_ENV="CLUSTERPATH"
+
+    local state="${1}"
+    shift
+
+    if ! _ENUM_STATE "${state}"; then
+        PRINT "Given state is not a valid state: ${state}. Valid states are: running, stopped and removed" "error" 0
+        return 1
+    fi
+
+    local podTriple=
+    for podTriple in "$@"; do
+        local pod=
+        local version=
+        local host=
+        if ! _SPLIT_POD_TRIPLE "${podTriple}"; then
+            return 1
+        fi
+
+        local hosts=
+        if [ -n "${host}" ]; then
+            if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+                PRINT "Host ${host} does not exist." "error" 0
+                return 1
+            fi
+
+            hosts="${host}"
+        else
+            hosts="$(_LIST_ATTACHEMENTS "${pod}")"
+        fi
+        unset host
+
+        if [ -z "${hosts}" ]; then
+            PRINT "Pod '${pod}' is not attached to any host." "warning" 0
+            continue
+        fi
+
+        local podVersion=
+        local host=
+        for host in ${hosts}; do
+            if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+                PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
+                continue
+            fi
+
+            local stateFile="pod.state"
+            local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
+            local targetPodStateFile="${targetPodDir}/${stateFile}"
+
+            if [ ! -d "${targetPodDir}" ]; then
+                PRINT "Pod ${pod}:${podVersion} not found on host ${host}. Skipping." "warning" 0
+                continue
+            fi
+
+
+            PRINT "Set state of release ${podVersion} on host ${host} to ${state}." "ok" 0
+
+            printf "%s\\n" "${state}" >"${targetPodStateFile}"
+
+            _LOG "${host}" "${pod}" "SET_POD_RELEASE_STATE release:${podVersion}=${state}"
+        done
+    done
+}
+
+LS_POD_RELEASE_STATE()
+{
+    SPACE_SIGNATURE="filterState:0 quite:0 podTriple"
+    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _GET_POD_RELEASE_STATE _FIND_POD_VERSION _SPLIT_POD_TRIPLE _GET_POD_RELEASES"
+    SPACE_ENV="CLUSTERPATH"
+
+    local filterState="${1:-}"
+    shift
+
+    local quite="${1:-false}"
+    shift
+
+    local podTriple="${1}"
+    shift
+
+    if [ -n "${filterState}" ]; then
+        if [ "${filterState}" = "running" ] || [ "${filterState}" = "stopped" ] || [ "${filterState}" = "removed" ]; then
+            # Good, fall through
+            :
+        else
+            PRINT "State must be running, stopped or removed. Leave blank for all" "error" 0
+            return 1
+        fi
+    fi
+
+    if [ "${podTriple#*:}" != "${podTriple}" ]; then
+        PRINT "Do not specify version for pod. Argument only as 'pod[@host]'" "error" 0
+        return 1
+    fi
+
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTriple}"; then
+        return 1
+    fi
+
+
+    local hosts=
+    if [ -n "${host}" ]; then
+        if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+            PRINT "Host ${host} does not exist." "error" 0
+            return 1
+        fi
+
+        hosts="${host}"
+    else
+        hosts="$(_LIST_ATTACHEMENTS "${pod}")"
+    fi
+    unset host
+
+    if [ -z "${hosts}" ]; then
+        PRINT "Pod is not attached to any host" "warning" 0
+        return
+    fi
+
+    local host=
+    for host in ${hosts}; do
+        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            #PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
+            continue
+        fi
+
+        local podVersions="$(_GET_POD_RELEASES "${host}" "${pod}")"
+        local podVersion=
+        for podVersion in ${podVersions}; do
+            local state=
+            if ! state="$(_GET_POD_RELEASE_STATE "${host}" "${pod}" "${podVersion}")"; then
+                continue
+            fi
+            if [ -n "${filterState}" ]; then
+                if [ "${filterState}" != "${state}" ]; then
+                    continue
+                fi
+            fi
+            if [ "${quite}" = "true" ]; then
+                printf "%s:%s@%s\\n" "${pod}" "${podVersion}" "${host}"
+            else
+                printf "%s:%s@%s %s\\n" "${pod}" "${podVersion}" "${host}" "${state}"
+            fi
+        done
+    done |sort
 }
 
 # Return the pod.version.state file
 GET_POD_RELEASE_STATE()
 {
-    SPACE_SIGNATURE="podAndVersion [host]"
-    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _GET_POD_RELEASE_STATE _FIND_POD_VERSION"
+    SPACE_SIGNATURE="podTriple"
+    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _GET_POD_RELEASE_STATE _FIND_POD_VERSION _SPLIT_POD_TRIPLE"
     SPACE_ENV="CLUSTERPATH"
 
-    local podAndVersion="${1}"
+    local podTriple="${1}"
     shift
 
-    local pod="${podAndVersion%:*}"
-
-    local podVersion0="${podAndVersion#*:}"
-    if [ -z "${podVersion0}" ] || [ "${podVersion0}" = "${podAndVersion}" ]; then
-        podVersion0="latest"
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTriple}"; then
+        return 1
     fi
-
-    local host="${1:-}"
 
     local hosts=
     if [ -n "${host}" ]; then
@@ -2913,35 +3269,35 @@ GET_POD_RELEASE_STATE()
     unset host
 
     if [ -z "${hosts}" ]; then
-        PRINT "Pod is not attached to any hosts." "warning" 0
+        PRINT "Pod is not attached to any host" "warning" 0
         return
     fi
 
     local podVersion=
     local host=
     for host in ${hosts}; do
-        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${podVersion0}" "${host}")"; then
-            PRINT "Version ${podVersion0} not found on host ${host}. Skipping." "info" 0
+        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            #PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
             continue
         fi
 
         local state=
         if ! state="$(_GET_POD_RELEASE_STATE "${host}" "${pod}" "${podVersion}")"; then
-            PRINT "Version ${podVersion} state not found on host ${host}. Skipping." "warning" 0
+            #PRINT "Version ${podVersion} state not found on host ${host}. Skipping." "warning" 0
             continue
         fi
-        printf "%s: %s\\n" "${host}" "${state}"
+        printf "%s:%s@%s %s\\n" "${pod}" "${podVersion}" "${host}" "${state}"
     done
 }
 
 # Connect to the cluster and retrieve logs for a pod instance.
 DAEMON_LOG()
 {
-    SPACE_SIGNATURE="host:0"
+    SPACE_SIGNATURE="[host]"
     SPACE_DEP="PRINT _DOES_HOST_EXIST _HOST_DAEMON_LOG _LIST_HOSTS"
     SPACE_ENV="CLUSTERPATH"
 
-    local host="${1}"
+    local host="${1:-}"
     shift
 
     local hosts=
@@ -3000,26 +3356,50 @@ _HOST_DAEMON_LOG()
     # Failed
     return 1
 }
+
 # Connect to the cluster and retrieve logs for a pod instance.
 LOGS()
 {
-    SPACE_SIGNATURE="podAndVersion [host tail since]"
-    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _GET_POD_RELEASE_STATE _HOST_LOGS _FIND_POD_VERSION"
+    SPACE_SIGNATURE="timestamp limit streams podTriple"
+    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _HOST_LOGS _FIND_POD_VERSION _SPLIT_POD_TRIPLE STRING_IS_NUMBER"
     SPACE_ENV="CLUSTERPATH"
 
-    local podAndVersion="${1}"
+    local timestamp="${1:-0}"
     shift
 
-    local pod="${podAndVersion%:*}"
+    local limit="${1:-0}"
+    shift
 
-    local podVersion0="${podAndVersion#*:}"
-    if [ -z "${podVersion0}" ] || [ "${podVersion0}" = "${podAndVersion}" ]; then
-        podVersion0="latest"
+    local streams="${1:-stdout,stderr}"
+    shift
+
+    if ! STRING_IS_NUMBER "${timestamp}"; then
+        PRINT "timeout must be positive number (seconds since epoch)" "error" 0
+        return 1
     fi
 
-    local host="${1:-}"
-    local tail="${2:-}"
-    local since="${3:-}"
+    if ! STRING_IS_NUMBER "${limit}" 1; then
+        PRINT "limit must be a number" "error" 0
+        return 1
+    fi
+
+    if [ "${streams}" = "stdout" ] || [ "${streams}" = "stderr" ] || [ "${streams}" = "stdout,stderr" ] || [ "${streams}" = "stderr,stdout" ]; then
+        # All good, fall through
+        :
+    else
+        PRINT "streams must be: stdout, stderr or \"stdout,stderr\"" "error" 0
+        return 1
+    fi
+
+    local podTriple="${1}"
+    shift
+
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTriple}"; then
+        return 1
+    fi
 
     local hosts=
     if [ -n "${host}" ]; then
@@ -3035,36 +3415,25 @@ LOGS()
     unset host
 
     if [ -z "${hosts}" ]; then
-        PRINT "Pod is not attached to any hosts." "warning" 0
+        PRINT "Pod is not attached to any host." "warning" 0
         return
     fi
 
     local podVersion=
     local host=
     for host in ${hosts}; do
-        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${podVersion0}" "${host}")"; then
-            PRINT "Version ${podVersion0} not found on host ${host}. Skipping." "info" 0
-            continue;
-        fi
-
-        local state=
-        if ! state="$(_GET_POD_RELEASE_STATE "${host}" "${pod}" "${podVersion}")"; then
-            PRINT "Version ${podVersion} state not found on host ${host}. Skipping." "warning" 0
-            continue;
-        fi
-        if [ "${state}" = "running" ] || [ "${state}" = "stopped" ]; then
-            printf "Logs for pod '%s:%s' on host '%s':\\n" "${pod}" "${podVersion}" "${host}"
-            _HOST_LOGS "${host}" "${pod}" "${podVersion}" "${tail}" "${since}"
-        else
-            PRINT "Pod ${pod}:${podVersion} is not running/stopped on host ${host}, cannot get logs." "info" 0
+        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            #PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
             continue
         fi
+
+        _HOST_LOGS "${host}" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}"
     done
 }
 
-_HOST_LOGS()
+_HOST_POD_STATUS()
 {
-    SPACE_SIGNATURE="host pod podVersion [tail since]"
+    SPACE_SIGNATURE="host pod podVersion query"
     SPACE_DEP="_HOST_SSH_CONNECT PRINT _DOES_HOST_EXIST"
     SPACE_ENV="CLUSTERPATH"
 
@@ -3077,9 +3446,56 @@ _HOST_LOGS()
     local podVersion="${1}"
     shift
 
-    local tail="${1:-}"
-    local since="${2:-}"
+    local query="${1}"
+    shift
 
+    if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+        PRINT "Host ${host} does not exist." "error" 0
+        return 1
+    fi
+
+    local i=
+    local status=
+    # Try two times before failing
+    for i in 1 2; do
+        _HOST_SSH_CONNECT "${host}" "pod_status" "${pod}" "${podVersion}" "${query}"
+        status="$?"
+        if [ "${status}" -eq 0 ]; then
+            return 0
+        elif [ "${status}" -eq 10 ]; then
+            break
+        fi
+    done
+
+    PRINT "Could not get pod status from host." "error" 0
+
+    # Failed
+    return 1
+}
+
+_HOST_LOGS()
+{
+    SPACE_SIGNATURE="host pod podVersion timestamp limit streams"
+    SPACE_DEP="_HOST_SSH_CONNECT PRINT _DOES_HOST_EXIST"
+    SPACE_ENV="CLUSTERPATH"
+
+    local host="${1}"
+    shift
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local timestamp="${1}"
+    shift
+
+    local limit="${1}"
+    shift
+
+    local streams="${1}"
+    shift
 
     if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
         PRINT "Host ${host} does not exist." "error" 0
@@ -3090,7 +3506,7 @@ _HOST_LOGS()
     local status=
     # Try one times before failing
     for i in 1; do
-        _HOST_SSH_CONNECT "${host}" "logs" "${pod}" "${podVersion}" "${tail}" "${since}"
+        _HOST_SSH_CONNECT "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}"
         status="$?"
         if [ "${status}" -eq 0 ]; then
             return 0
@@ -3169,21 +3585,30 @@ _GET_POD_RUNNING_RELEASES()
 # Generate config for haproxy
 GEN_INGRESS_CONFIG()
 {
-    SPACE_SIGNATURE="[ingressPodAndVersion excludeClusterPorts]"
-    SPACE_DEP="PRINT _GET_TMP_DIR _LIST_HOSTS LIST_PODS_BY_HOST _EXTRACT_INGRESS _GET_POD_RUNNING_RELEASES STRING_ITEM_INDEXOF _GEN_INGRESS_CONFIG2 TEXT_EXTRACT_VARIABLES TEXT_VARIABLE_SUBST TEXT_FILTER STRING_IS_ALL"
+    SPACE_SIGNATURE="[podTuple excludeClusterPorts]"
+    SPACE_DEP="PRINT _GET_TMP_DIR _LIST_HOSTS LIST_PODS_BY_HOST _EXTRACT_INGRESS _GET_POD_RUNNING_RELEASES STRING_ITEM_INDEXOF _GEN_INGRESS_CONFIG2 TEXT_EXTRACT_VARIABLES TEXT_VARIABLE_SUBST TEXT_FILTER STRING_IS_ALL STRING_SUBST"
     SPACE_ENV="CLUSTERPATH"
 
-    local podAndVersion="${1:-ingress}"
-    shift
+    local podTuple="${1:-ingress}"
 
-    local ingressPod="${podAndVersion%:*}"
-
-    local podVersion="${podAndVersion#*:}"
-    if [ -z "${podVersion}" ] || [ "${podVersion}" = "${podAndVersion}" ]; then
-        podVersion="latest"
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTuple}"; then
+        return 1
     fi
 
-    local excludeClusterPorts="${1:-}"
+    if [ -n "${host}" ]; then
+        PRINT "Do not provide @host, only pod[:version]" "error" 0
+        return 1
+    fi
+
+    local podVersion="${version}"
+    local ingressPod="${pod}"
+
+    local excludeClusterPorts="${2:-}"
+
+    STRING_SUBST "excludeClusterPorts" ',' ' ' 1
 
     local ingressTplDir="${CLUSTERPATH}/_config/${ingressPod}/_tpl"
     local ingressConfDir="${CLUSTERPATH}/_config/${ingressPod}/conf"
@@ -3213,9 +3638,11 @@ GEN_INGRESS_CONFIG()
     # only need to do it once for every specific pod release.
     doneReleases=""
 
+    local newline="
+"
     local host=
     for host in ${hosts}; do
-        PRINT "Processing pods on host ${host}" "info" 0
+        PRINT "Processing pods on host ${host}" "debug" 0
 
         local pods="$(LIST_PODS_BY_HOST "${host}")"
         local pod=
@@ -3228,7 +3655,8 @@ GEN_INGRESS_CONFIG()
                 PRINT "Pod ${pod} on ${host} has no running releases, skipping." "info" 0
                 continue
             fi
-            PRINT "Pod ${pod} on ${host} has running releases: ${versions}" "info" 0
+            STRING_SUBST "versions" "${newline}" ' ' 1
+            PRINT "Pod ${pod} on ${host} has running releases: ${versions}" "debug" 0
             local version=
             for version in ${versions}; do
                 local podFile="${CLUSTERPATH}/${host}/pods/${pod}/release/${version}/pod"
@@ -3244,7 +3672,7 @@ GEN_INGRESS_CONFIG()
                 fi
                 doneReleases="${doneReleases} ${pod}:${version}"
 
-                PRINT "Generating ingress for ${pod} release:${version} on ${host}" "info" 0
+                PRINT "Generating ingress for ${pod}:${version} on ${host}" "info" 0
 
                 if ! _EXTRACT_INGRESS "${podFile}" "${tmpDir}" "${host}" "${pod}" "${excludeClusterPorts}"; then
                     return 1
@@ -3337,7 +3765,6 @@ _GEN_INGRESS_CONFIG2()
 
     if [ -z "${frontends}" ] || [ -z "${backends}" ]; then
         PRINT "No ingress has been generated." "warning" 0
-        return 1
     fi
 
     if ! cat "${ingressTplDir}/main.tpl"; then
@@ -3740,11 +4167,11 @@ _ENUM_STATE()
     local state="${1}"
     shift
 
-    if [ "${state}" = "removed" ] || [ "${state}" = "created" ] || [ "${state}" = "running" ] || [ "${state}" = "stopped" ]; then
+    if [ "${state}" = "removed" ] || [ "${state}" = "running" ] || [ "${state}" = "stopped" ]; then
         return 0
     fi
 
-    return 1;
+    return 1
 }
 
 _LIST_ATTACHEMENTS()
@@ -3754,6 +4181,10 @@ _LIST_ATTACHEMENTS()
 
     local pod="${1}"
     shift
+
+    if [ -z "${pod}" ]; then
+        return 1
+    fi
 
     (cd "${CLUSTERPATH}" && find . -maxdepth 4 -mindepth 4 -regex "^./[^.][^/]*/pods/${pod}/log\.txt\$" |cut -d/ -f2)
 }
@@ -3780,13 +4211,16 @@ _IS_POD_ATTACHED()
 #  2=only active
 _LIST_HOSTS()
 {
-    SPACE_SIGNATURE="path [filter]"
+    SPACE_SIGNATURE="path filter [showState]"
     SPACE_DEP="GET_HOST_STATE"
 
     local dir="${1}"
     shift
 
-    local filter="${1:-0}"
+    local filter="${1:-1}"
+    shift
+
+    local showState="${1:-false}"
 
     local hosts=
     hosts="$(cd "${dir}" && find . -maxdepth 2 -mindepth 2 -type f -regex "^./[^.][^/]*/host\.env\$" |cut -d/ -f2)"
@@ -3803,29 +4237,33 @@ _LIST_HOSTS()
                 continue
             fi
         fi
-        printf "%s\\n" "${host}"
+        if [ "${showState}" = "true" ]; then
+            printf "%s %s\\n" "${host}" "${state}"
+        else
+            printf "%s\\n" "${host}"
+        fi
     done
 }
 
 SET_HOST_STATE()
 {
-    SPACE_SIGNATURE="host state"
+    SPACE_SIGNATURE="state host"
     SPACE_DEP="PRINT _DOES_HOST_EXIST"
     SPACE_ENV="CLUSTERPATH"
-
-    local host="${1}"
-    shift
 
     local state="${1}"
     shift
 
-    if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
-        PRINT "Host does not exist" "error" 0
+    if [ "${state}" != "active" ] && [ "${state}" != "inactive" ] && [ "${state}" != "disabled" ]; then
+        PRINT "Unknown state. Try active/inactive/disabled." "error" 0
         return 1
     fi
 
-    if [ "${state}" != "active" ] && [ "${state}" != "inactive" ] && [ "${state}" != "disabled" ]; then
-        PRINT "Unknown state. Try active/inactive/disabled." "error" 0
+    local host="${1}"
+    shift
+
+    if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+        PRINT "Host does not exist" "error" 0
         return 1
     fi
 
@@ -3848,16 +4286,48 @@ GET_HOST_STATE()
         return 1
     fi
 
-    local state="active"
-
     local dir="${CLUSTERPATH}/${host}"
     local file="${dir}/host.state"
 
+    local state="active"  # active is the default if no state file exists
     if [ -f "${file}" ]; then
         state="$(cat "${file}")"
     fi
 
     printf "%s\\n" "${state}"
+}
+
+# assigns to:
+#   pod
+#   version
+#   host
+_SPLIT_POD_TRIPLE()
+{
+    SPACE_SIGNATURE="podVersionHost"
+    SPACE_DEP="PRINT"
+
+    local triple="${1}"
+    shift
+
+    host="${triple#*@}"
+    if [ "${host}" = "${triple}" ]; then
+        host=""
+    fi
+
+    local podVersion="${triple%@*}"
+    pod="${podVersion%:*}"
+    if [ "${pod}" != "${podVersion}" ]; then
+        version="${podVersion#*:}"
+    fi
+
+    if [ -z "${version}" ]; then
+        version="latest"
+    fi
+
+    if [ -z "${pod}" ]; then
+        PRINT "Invalid pod format provided, expecting pod[:version][@host]" "error" 0
+        return 1
+    fi
 }
 
 _FIND_POD_VERSION()
@@ -3928,6 +4398,358 @@ _LOG_C()
     printf "%s %s %s %s\\n" "$(date +"%F %T")" "$(date +%s)" "${USER}" "${action}" >>"${logFile}"
 }
 
+# HELPER FUNCTION
+# Perform the release of a new pod version and removed other running version of the same pod.
+# A release can be done "soft" or "hard".
+# A "soft" release has many steps in order to have zero downtime, while a "hard" release is simpler and faster but could results in a glimpse of downtime.
+# To perform a perfect "soft" release all ingress enabled clusterPorts must be configured using ${CLUSTERPORTAUTOxyz}. This is to prevent two different pod version serving traffic at the same time.
+# If that is not an issue then they can have static clusterPorts, but do avoid a site being skewed between two version during the process then the safe way is to use auto assignment of cluster ports for ingress enabled cluster ports.
+PERFORM_RELEASE()
+{
+    SPACE_SIGNATURE="podTuple [mode push force]"
+    SPACE_DEP="COMPILE_POD PRINT _LOG_C GET_POD_RELEASE_STATE _PERFORM_HARD_RELEASE _PERFORM_SOFT_RELEASE LS_POD_RELEASE_STATE STRING_SUBST"
+    SPACE_ENV="CLUSTERPATH"
+
+    local podTuple="${1}"
+    shift
+
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTuple}"; then
+        return 1
+    fi
+
+    if [ -n "${host}" ]; then
+        PRINT "Do not provide @host, only pod[:version]" "error" 0
+        return 1
+    fi
+
+    local mode="${1:-hard}"
+    local push="${2:-false}"
+    local force="${3:-false}"
+
+    if [ "${force}" = "true" ]; then
+        force="-f"
+    else
+        force=""
+    fi
+
+    if [ "${mode}" = "soft" ] || [ "${mode}" = "hard" ]; then
+        # All good, fall through
+        :
+    else
+        PRINT "Mode must be soft or hard" "error" 0
+        return 1
+    fi
+
+    local podVersion=
+    if [ "${version}" = "latest" ]; then
+        # Compile new version
+        if ! podVersion="$(COMPILE_POD "${pod}" "true")"; then
+            return 1
+        fi
+    else
+        # Podversion is expected to exist and we want to roll over to that version.
+        # Check so that it exists
+        local lines=
+        lines="$(GET_POD_RELEASE_STATE "${pod}:${version}")"
+        if [ -z "${lines}" ]; then
+            PRINT "${pod}:${version} does not exist" "error" 0
+            return 1
+        fi
+        podVersion="${version}"
+    fi
+
+    if [ -z "${podVersion}" ]; then
+        PRINT "Nothing to do. Specify a version to release it, if not compiling new" "error" 0
+        return 1
+    fi
+
+    # Get a list of the current running versions of the pod.
+    local otherVersions="$(LS_POD_RELEASE_STATE "running" "true" "${pod}")"
+
+    local otherVersions2="$(printf "%s\\n" "${otherVersions}" |grep -v "\<${podVersion}\>")"
+
+    if [ "${otherVersions2}" = "${otherVersions}" ]; then
+        _LOG_C "RELEASE ${pod}:${podVersion}"
+    else
+        _LOG_C "RE-RELEASE ${pod}:${podVersion}"
+    fi
+
+    local newline="
+"
+    STRING_SUBST "otherVersions2" "${newline}" " " 1
+
+    local dir="${PWD}"
+    cd "${CLUSTERPATH}"
+    local status=
+    if [ "${mode}" = "hard" ]; then
+        _PERFORM_HARD_RELEASE "${pod}" "${podVersion}" "${otherVersions2}"
+        status="$?"
+    else
+        _PERFORM_SOFT_RELEASE "${pod}" "${podVersion}" "${otherVersions2}"
+        status="$?"
+    fi
+    cd "${dir}"
+    return "${status}"
+}
+
+_PERFORM_HARD_RELEASE()
+{
+    SPACE_DEP="SET_POD_RELEASE_STATE GEN_INGRESS_CONFIG UPDATE_POD_CONFIG CLUSTER_SYNC"
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local otherVersions="${1}"
+    shift
+
+    PRINT "Perform hard release of ${pod}:${podVersion}" "info" 0
+
+    if [ -n "${otherVersions}" ]; then
+        # Remove the other running pod versions
+        if ! SET_POD_RELEASE_STATE "removed" ${otherVersions}; then
+            return 1
+        fi
+    fi
+
+    if ! SET_POD_RELEASE_STATE "running" "${pod}:${podVersion}"; then
+        return 1
+    fi
+
+    GEN_INGRESS_CONFIG &&
+    UPDATE_POD_CONFIG "ingress" &&
+    git add . &&
+    git commit -m "Hard release ${pod}:${podVersion}, retire other versions, update ingress" || return 1
+
+    PRINT "Syncing..." "info" 0
+
+    if [ "${push}" = "true" ]; then
+        if ! git push -q; then
+            return 1
+        fi
+    fi
+
+    if ! CLUSTER_SYNC "${force}" "true"; then
+        return 1
+    fi
+
+    git commit . -m "Update sync log after releasing ${pod}:${podVersion}"
+    if [ "${push}" = "true" ]; then
+        git push -q
+    fi
+
+    PRINT "Done" "info" 0
+}
+
+_PERFORM_SOFT_RELEASE()
+{
+    SPACE_DEP="SET_POD_RELEASE_STATE GEN_INGRESS_CONFIG UPDATE_POD_CONFIG CLUSTER_SYNC SET_POD_INGRESS_STATE GET_POD_STATUS"
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local otherVersions="${1}"
+    shift
+
+    PRINT "Perform soft release of ${pod}:${podVersion}" "info" 0
+
+    # Deploy new release, but without any added ingress conf
+    if ! git commit . -m "Soft release ${pod}:${podVersion}"; then
+        return 1
+    fi
+
+    if [ "${push}" = "true" ]; then
+        if ! git push -q; then
+            return 1
+        fi
+    fi
+
+    if ! CLUSTER_SYNC "${force}" "true"; then
+        return 1
+    fi
+
+    PRINT "Wait for new release to run..." "info" 0
+
+    # Wait for a while to get the status of the new release
+    local podStatus=
+    local now="$(date +%s)"
+    local timeout="$((now+30))"
+    while true; do
+        sleep 2
+        if GET_POD_STATUS "true" "true" "${pod}:${podVersion}" 2>/dev/null; then
+            break
+        fi
+
+        now="$(date +%s)"
+        if $((now > timeout)); then
+            PRINT "Timeout trying to get pod readiness, aborting now. Rerun this release process" "error" 0
+            PRINT "New release: '${pod}:${podVersion}' failed to run. Remove it" "error" 0
+            SET_POD_RELEASE_STATE "removed" "${pod}:${podVersion}"
+            git commit . -m "New release ${pod}:${podVersion} failed to run. Remove it"
+            if [ "${push}" = "true" ]; then
+                git push -q
+            fi
+            CLUSTER_SYNC "${force}" "true"
+            return 1
+        fi
+    done
+
+    PRINT "New release is now running" "info" 0
+    PRINT "Update the ingress" "info" 0
+
+    # New release is up and running, regenerate the ingress
+    # Note that if the new version uses the same clusterPorts as the previous version (yes, unless using AUTOCLUSTERPORT) then
+    # it will start recieving traffic as soon as it is running.
+    # This ingress conf regeneration might not change anything in the ingress.
+    GEN_INGRESS_CONFIG &&
+    UPDATE_POD_CONFIG "ingress" &&
+    git add . &&
+    git commit -m "Update ingress for ${pod}:${podVersion}"
+
+    # TODO: know if ingress got updated
+    if true; then
+        if [ "${push}" = "true" ]; then
+            if ! git push -q; then
+                return 1
+            fi
+        fi
+
+        if ! CLUSTER_SYNC "${force}" "true"; then
+            return 1
+        fi
+
+        # Wait for the new ingress conf to get updated
+        PRINT "Waiting for ingress to get updated..." "info" 0
+        sleep 20
+    fi
+
+    if [ -n "${otherVersions}" ]; then
+        # Remove the other version of the pod from the ingress configuration
+        if ! SET_POD_INGRESS_STATE "inactive" ${otherVersions}; then
+            return 1
+        fi
+        git commit . -m "Remove other running versions from ingress: ${otherVersions}"
+        if [ "${push}" = "true" ]; then
+            git push -q
+        fi
+        if ! CLUSTER_SYNC "${force}" "true"; then
+            return 1
+        fi
+
+        # Wait so that ingress get's updated
+        sleep 20
+
+        # Remove the other pod versions
+        if ! SET_POD_RELEASE_STATE "removed" ${otherVersions}; then
+            return 1
+        fi
+        git commit . -m "Retire other running versions: ${otherVersions}"
+        if [ "${push}" = "true" ]; then
+            git push -q
+        fi
+        CLUSTER_SYNC "${force}" "true"
+    fi
+
+    git commit . -m "Update sync log after releasing ${pod}:${podVersion}"
+    if [ "${push}" = "true" ]; then
+        git push -q
+    fi
+}
+
+# Check if a specific pod version's instances are ready
+GET_POD_STATUS()
+{
+    SPACE_SIGNATURE="readiness:0 quite:0 podTriple"
+    SPACE_DEP="_LIST_ATTACHEMENTS PRINT _DOES_HOST_EXIST _FIND_POD_VERSION _SPLIT_POD_TRIPLE _HOST_POD_STATUS"
+    SPACE_ENV="CLUSTERPATH"
+
+    local readiness="${1:-false}"
+    shift
+
+    local quite="${1:-false}"
+    shift
+
+    local podTriple="${1}"
+    shift
+
+    local pod=
+    local version=
+    local host=
+    if ! _SPLIT_POD_TRIPLE "${podTriple}"; then
+        return 1
+    fi
+
+    local hosts=
+    if [ -n "${host}" ]; then
+        if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+            PRINT "Host ${host} does not exist" "error" 0
+            return 1
+        fi
+
+        hosts="${host}"
+    else
+        hosts="$(_LIST_ATTACHEMENTS "${pod}")"
+    fi
+    unset host
+
+    if [ -z "${hosts}" ]; then
+        PRINT "Pod is not attached to any host." "warning" 0
+        return 1
+    fi
+
+    local totalCount="0"
+    local countReady="0"
+    local podVersion=
+    local host=
+    for host in ${hosts}; do
+        if ! podVersion="$(_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            continue
+        fi
+        totalCount="$((totalCount+1))"
+
+        if [ "${readiness}" = "true" ]; then
+            local status=
+            if status="$(_HOST_POD_STATUS "${host}" "${pod}" "${podVersion}" "readiness")"; then
+                if [ "${status}" = "ready" ]; then
+                    countReady="$((countReady+1))"
+                    if [ "${quite}" = "true" ]; then
+                        # We can do an early quit here
+                        return 0
+                    fi
+                fi
+            fi
+        else
+            # General info
+            # TODO: how to present this
+            local status=
+            if status="$(_HOST_POD_STATUS "${host}" "${pod}" "${podVersion}" "status")"; then
+                printf "Host: %s, Pod: %s\\nStatus: %s\\n" "${host}" "${pod}:${podVersion}" "${status}"
+            else
+                printf "Host: %s, Pod: %s\\nStatus: unknown\\n" "${host}" "${pod}:${podVersion}"
+            fi
+        fi
+    done
+
+    if [ "${readiness}" = "true" ]; then
+        if [ "${quite}" = "true" ]; then
+            if [ "${countReady}" -gt 0 ]; then
+                return 0
+            else
+                return 1
+            fi
+        fi
+        printf "%s/%s\\n" "${countReady}" "${totalCount}"
+    fi
+}
+
 _SHOW_USAGE()
 {
     printf "%s\\n" "Usage:
@@ -3940,16 +4762,19 @@ _SHOW_USAGE()
     create-cluster name
         Creates a cluster with the given name in the current directory.
 
-    sync [ignoreGitOps={true|false} forceSync={true|false}]
+    sync [-f] [-q]
         Sync the cluster project in the current directory with the Cluster
+        -f switch set then a force sync is performed. This is useful when performing a rollback
+            or if restoring a previous branch-out.
+        -q set to be more quite.
 
     status
         Show status of the Cluster
 
-    import-pod-config pod
+    import-config pod
         Import config templates from pod repo into the cluster project
 
-    create-host host [jumphost expose]
+    create-host host [-j jumphost] [-e expose]
         Create a host in the cluster repo by the name 'host'.
         jumphost is an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
         If jumphost is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead.
@@ -3962,12 +4787,17 @@ _SHOW_USAGE()
         Setup the host using the superuser
         Creates the regular user, installs podman, configures firewalld, etc.
 
-    ls-hosts [filter={0|1|2}]
-        List all hosts in this cluster project
-        filter:
-            0=active, inactive and disabled
-            1=active, and inactive
-            2=only active
+    create-superuser host [-k keyfile]
+        Login as root on the host and create the super user as defined in the host.env file.
+        rootkeyfile is optional, of not set then password is required to login as root.
+
+    disable-root host
+        Use the super user account to disable the root login on a host
+
+    ls-hosts [-a] [-s]
+        List active and inactive hosts in this cluster project
+        -a if set then also list disabled hosts
+        -s if set then add a status column to the output
 
     ls-pods
         List all known pods in the PODPATH
@@ -3978,65 +4808,85 @@ _SHOW_USAGE()
     ls-pods-by-host host
         List all pods attached to a specific host
 
-    attach-pod host pod
+    attach-pod pod@host
         Attach a Pod to a host, this does not deploy anything nor release anything
         host must exist in the cluster project
         pod must exist on PODPATH
 
-    detach-pod host pod
-        Remove a pod from a host
+    detach-pod pod[@host]
+        Remove a pod from one or all hosts
 
-    compile pod [host]
+    compile pod[@host] [-v]
         Compile the current pod version to all (or one) host(s) which it is already attached to.
         If host is left out then compile on all hosts which have the pod attached.
+        If -v option set then output the pod version to stdout
 
-    update-config pod[:version] [host]
+    update-config pod[:version][@host]
         Re-copy the pod config in the cluster to a specific pod release.
         If host is left out then copy configs to all hosts which have the pod attached.
+        If version is left out the 'latest' version is searched for.
 
-    set-pod-state pod[:version] state [host]
+    set-pod-ingress pod[:version][@host] -s active|inactive
+        Set ingress active or inactive of a specific pod version on one/all attached hosts.
+        If version is left out the 'latest' version is searched for.
+        If host is left out then set state for pod on all hosts which the pod is attached to.
+        Multiple pods can be given on cmd line.
+
+    set-pod-state pod[:version][@host] -s running|stopped|removed
         Set the desired state of a specific pod version on one/all attached hosts.
-        state options are:
-            removed
-            stopped
-            running
+        If version is left out the 'latest' version is searched for.
         If host is left out then set state for pod on all hosts which the pod is attached to.
+        Multiple pods can be given on cmd line.
 
-    get-pod-state pod[:version] [host]
+    get-pod-state pod[:version][@host]
         Get the desired state of a specific pod version on one/all attached hosts.
-        If host is left out then set state for pod on all hosts which the pod is attached to.
+        If host is left out then get state of pod for all hosts which the pod is attached to.
+        If version is left out the 'latest' version is searched for.
 
-    generate-ingress [ingresspod[:version] excludeClusterPorts]
+    ls-pod-state pod[@host] [-q] [-s running|stopped|removed]
+        Output the desired state for all pod version on all or just the specified host.
+        -q, if set then do not output the state column
+        -s, if set then filter for the provided state
+
+    get-pod-status pod[:version][@host] [-q] [-r]
+        Get the actual status of a pod (not the desired state).
+        If host is left out then get status of the pod for all hosts which the pod is attached to.
+        If version is left out the 'latest' version is searched for.
+        -r option set means to only get the 'readiness' of the pod.
+        -q option set means to not output but to return 1 if not healthy.
+
+    generate-ingress [ingresspod[:version]] [-x excludeClusterPorts]
         Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
         ingressPod
             name of the ingress pod, defaults to 'ingress'.
-        excludeClusterPorts
-            Space separated string of clusterPorts to exclude from the Ingress configuration
+            If version is left out the 'latest' version is searched for.
+        -x excludeClusterPorts
+            Comma separated string of clusterPorts to exclude from the Ingress configuration
 
-    set-host-state host state
-        Mark a specific host as active/inactive/disabled
-        state:
-            active
-            inactive
-            disabled
+    set-host-state host -s active|inactive|disabled
 
     get-host-state host
-        Get a the state of a host
+        Get the state of a host
 
-    logs pod[:version] [host tail since]
-        tail is number of lines to tail
-        since is timestamp to get from, ex: 2006-01-02T15:04:05 or UNIX ts
+    logs pod[:version][@host] [-t timestamp] [-l limit] [-s stdout|stderr]
+        Get logs for a pod on one or all attached hosts.
+        If version is left out the 'latest' version is searched for.
+        If host is left out then get logs for all attached hosts.
+        -t timestamp is UNIX timestamp to get from, 0 get's all.
+        -l limit is the maximum number of lines to get, negative gets from bottom (newest)
+        -s streams is to get stdout, stderr or both, as: -s stdout | -s stderr | -s stdout,stderr (default)
 
-    daemon-log
+    release pod[:version] [-p] [-m soft|hard] [-f]
+        Perform the compilation and release of a new pod version.
+        If 'version' is not provided (or set to 'latest') then compile a new version, if no new version is available quit.
+        If 'version' is defined then re-release that version (which is expected have been compiled already).
+        -m mode is either soft or hard. Default is hard (quickest).
+        -p if set then perform 'git push' operations after each 'git commit'.
+        -f if set will force sync changes to cluster
+
+    daemon-log [host]
         Get the systemd unit daemon log
-
-    create-superuser host [rootkeyfile]
-        Login as root on the host and create the super user as defined in the host.env file.
-        rootkeyfile is optional, of not set then password is required to login as root.
-
-    disable-root host
-        Use the super user account to disable the root login on a host
-"
+" >&2
 }
 
 _VERSION()
@@ -4044,10 +4894,86 @@ _VERSION()
     printf "%s\\n" "Simplenetes version 0.1 (GandalfVsHeman)"
 }
 
+_GETOPTS()
+{
+    SPACE_SIGNATURE="simpleSwitches richSwitches minPositional maxPositional [args]"
+    SPACE_DEP="PRINT STRING_SUBSTR STRING_INDEXOF STRING_ESCAPE"
+
+    local simpleSwitches="${1}"
+    shift
+
+    local richSwitches="${1}"
+    shift
+
+    local minPositional="${1:-0}"
+    shift
+
+    local maxPositional="${1:-0}"
+    shift
+
+    _out_rest=""
+
+    local options=""
+    local option=
+    for option in ${richSwitches}; do
+        options="${options}${option}:"
+    done
+
+    local posCount="0"
+    while [ "$#" -gt 0 ]; do
+        local flag="${1#-}"
+        if [ "${flag}" = "${1}" ]; then
+            # Non switch
+            posCount="$((posCount+1))"
+            if [ "${posCount}" -gt "${maxPositional}" ]; then
+                PRINT "Too many positional argumets, max ${maxPositional}" "error" 0
+                return 1
+            fi
+            _out_rest="${_out_rest}${_out_rest:+ }${1}"
+            shift
+            continue
+        fi
+        local flag2=
+        STRING_SUBSTR "${flag}" 0 1 "flag2"
+        if STRING_ITEM_INDEXOF "${simpleSwitches}" "${flag2}"; then
+            if [ "${#flag}" -gt 1 ]; then
+                PRINT "Invalid option: -${flag}" "error" 0
+                return 1
+            fi
+            eval "_out_${flag}=\"true\""
+            shift
+            continue
+        fi
+
+        local OPTIND=1
+        getopts ":${options}" "flag"
+        case "${flag}" in
+            \?)
+                PRINT "Unknown option ${1-}" "error" 0
+                return 1
+                ;;
+            :)
+                PRINT "Option -${OPTARG-} requires an argument" "error" 0
+                return 1
+                ;;
+            *)
+                STRING_ESCAPE "OPTARG"
+                eval "_out_${flag}=\"${OPTARG}\""
+                ;;
+        esac
+        shift $((OPTIND-1))
+    done
+
+    if [ "${posCount}" -lt "${minPositional}" ]; then
+        PRINT "Too few positional argumets, min ${minPositional}" "error" 0
+        return 1
+    fi
+}
+
 SNT_CMDLINE()
 {
     SPACE_SIGNATURE="action [args]"
-    SPACE_DEP="_SHOW_USAGE _VERSION GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATE LOGS SET_POD_RELEASE_STATE UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_PODS_BY_HOST LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG"
+    SPACE_DEP="_SHOW_USAGE _VERSION GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATE LOGS SET_POD_RELEASE_STATE UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_PODS_BY_HOST LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD PERFORM_RELEASE"
     SPACE_ENV="PODPATH CLUSTERPATH"
 
     local action="${1:-help}"
@@ -4060,125 +4986,255 @@ SNT_CMDLINE()
     elif [ "${action}" = "version" ]; then
         _VERSION
     elif [ "${action}" = "create-cluster" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing argument: name"
+        local _out_rest=
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt create-cluster name\\n" >&2
             return 1
         fi
-        CLUSTER_CREATE "${1}"
+        CLUSTER_CREATE "${_out_rest}"
     elif [ "${action}" = "sync" ]; then
-        CLUSTER_SYNC "${1:-}" "${2:-}"
+        local _out_f="false"
+        local _out_q="false"
+
+        if ! _GETOPTS "f q" "" 0 0 "$@"; then
+            printf "Usage: snt sync [-f] [-q]\\n" >&2
+            return 1
+        fi
+
+        CLUSTER_SYNC "${_out_f}" "${_out_q}"
     elif [ "${action}" = "status" ]; then
+        if ! _GETOPTS "" "" 0 0 "$@"; then
+            printf "Usage: snt status\\n" >&2
+            return 1
+        fi
         CLUSTER_STATUS
-    elif [ "${action}" = "import-pod-config" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing argument: pod"
+    elif [ "${action}" = "import-config" ]; then
+        local _out_rest=
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt import-config pod\\n" >&2
             return 1
         fi
-        CLUSTER_IMPORT_POD_CFG "${1}"
+        CLUSTER_IMPORT_POD_CFG "${_out_rest}"
     elif [ "${action}" = "create-host" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing argument: host"
+        local _out_j=
+        local _out_e=
+        local _out_rest=
+        if ! _GETOPTS "" "j e" 1 1 "$@"; then
+            printf "Usage: snt create-host host [-j jumphost] [-e expose]\\n" >&2
             return 1
         fi
-        HOST_CREATE "${1}" "${2:-}" "${3:-}"
+        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}"
     elif [ "${action}" = "init-host" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing argument: host [force={true|false}]"
+        local _out_f="false"
+        local _out_rest=
+
+        if ! _GETOPTS "f" "" 1 1 "$@"; then
+            printf "Usage: snt init-host host [-f]\\n" >&2
             return 1
         fi
-        HOST_INIT "${1}" "${2:-}"
+        HOST_INIT "${_out_rest}" "${_out_f}"
     elif [ "${action}" = "setup-host" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing argument: host"
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt setup-host host\\n" >&2
             return 1
         fi
-        HOST_SETUP "${1}"
+        HOST_SETUP "${_out_rest}"
     elif [ "${action}" = "create-superuser" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing argument: host"
+        local _out_k=
+        local _out_rest=
+
+        if ! _GETOPTS "" "k" 1 1 "$@"; then
+            printf "Usage: snt create-superuser host [-k keyfile]\\n" >&2
             return 1
         fi
-        HOST_CREATE_SUPERUSER "${1}" "${2:-}"
+        HOST_CREATE_SUPERUSER "${_out_rest}" "${_out_k}"
     elif [ "${action}" = "disable-root" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing argument: host"
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt disable-root host\\n" >&2
             return 1
         fi
-        HOST_DISABLE_ROOT "${1}"
+        HOST_DISABLE_ROOT "${_out_rest}"
     elif [ "${action}" = "ls-hosts" ]; then
-        LIST_HOSTS "${1:-0}"
+        local _out_a="false"
+        local _out_s="false"
+
+        if ! _GETOPTS "a s" "" 0 0 "$@"; then
+            printf "Usage: snt ls-hosts [-a] [-s]\\n" >&2
+            return 1
+        fi
+        LIST_HOSTS "${_out_a}" "${_out_s}"
     elif [ "${action}" = "ls-pods" ]; then
+        if ! _GETOPTS "" "" 0 0 "$@"; then
+            printf "Usage: snt ls-pods\\n" >&2
+            return 1
+        fi
         LIST_PODS
     elif [ "${action}" = "ls-hosts-by-pod" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing argument: pod"
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt ls-hosts-by-pod pod\\n" >&2
             return 1
         fi
-        LIST_HOSTS_BY_POD "${1}"
+        LIST_HOSTS_BY_POD "${_out_rest}"
     elif [ "${action}" = "ls-pods-by-host" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing argument: host"
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt ls-pods-by-host host\\n" >&2
             return 1
         fi
-        LIST_PODS_BY_HOST "${1}"
+        LIST_PODS_BY_HOST "${_out_rest}"
     elif [ "${action}" = "attach-pod" ]; then
-        if [ $# -lt 2 ]; then
-            printf "%s\\n" "Missing arguments: host pod"
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt attach-pod pod@host\\n" >&2
             return 1
         fi
-        ATTACH_POD "${1}" "${2}"
+        ATTACH_POD "${_out_rest}"
     elif [ "${action}" = "detach-pod" ]; then
-        if [ $# -lt 2 ]; then
-            printf "%s\\n" "Missing arguments: host pod"
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt detach-pod host[@pod]\\n" >&2
             return 1
         fi
-        DETACH_POD "${1}" "${2}"
+        DETACH_POD "${_out_rest}"
     elif [ "${action}" = "compile" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing arguments: pod [host]"
+        local _out_v="false"
+        local _out_rest=
+
+        if ! _GETOPTS "v" "" 1 1 "$@"; then
+            printf "Usage: snt compile-pod pod[@host]\\n" >&2
             return 1
         fi
-        COMPILE_POD "${1}" "${2:-}"
+        COMPILE_POD "${_out_rest}" "${_out_v}"
     elif [ "${action}" = "update-config" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing arguments: pod[:version] [host]"
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt update-config pod[:version][@host]\\n" >&2
             return 1
         fi
-        UPDATE_POD_CONFIG "${1}" "${2:-}"
+        UPDATE_POD_CONFIG "${_out_rest}"
+    elif [ "${action}" = "set-pod-ingress" ]; then
+        local _out_rest=
+        local _out_s=""
+
+        if ! _GETOPTS "" "s" 1 999 "$@"; then
+            printf "Usage: snt set-pod-ingress pod[:version][@host] -s active|inactive\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        SET_POD_INGRESS_STATE "${_out_s}" "$@"
     elif [ "${action}" = "set-pod-state" ]; then
-        if [ $# -lt 2 ]; then
-            printf "%s\\n" "Missing arguments: pod[:version] state [host]"
+        local _out_rest=
+        local _out_s=""
+
+        if ! _GETOPTS "" "s" 1 999 "$@"; then
+            printf "Usage: snt set-pod-state pod[:version][@host] -s running|stopped|removed\\n" >&2
             return 1
         fi
-        SET_POD_RELEASE_STATE "${1}" "${2}" "${3:-}"
+        set -- ${_out_rest}
+        SET_POD_RELEASE_STATE "${_out_s}" "$@"
     elif [ "${action}" = "get-pod-state" ]; then
-        if [ $# -lt 2 ]; then
-            printf "%s\\n" "Missing arguments: pod version [host]"
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt get-pod-state pod[:version][@host]\\n" >&2
             return 1
         fi
-        GET_POD_RELEASE_STATE "${1}" "${2:-}"
+        GET_POD_RELEASE_STATE "${_out_rest}"
+    elif [ "${action}" = "ls-pod-state" ]; then
+        local _out_rest=
+        local _out_q="false"
+        local _out_s=""
+
+        if ! _GETOPTS "q" "s" 1 1 "$@"; then
+            printf "Usage: snt ls-pod-state pod[@host] [-q] [-s running|stopped|removed]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        LS_POD_RELEASE_STATE "${_out_s}" "${_out_q}" "$@"
+    elif [ "${action}" = "get-pod-status" ]; then
+        local _out_rest=
+        local _out_q="false"
+        local _out_r="false"
+
+        if ! _GETOPTS "q r" "" 1 1 "$@"; then
+            printf "Usage: snt get-pod-status pod[:version][@host] [-q] [-r]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        GET_POD_STATUS "${_out_r}" "${_out_q}" "$@"
+    elif [ "${action}" = "signal" ]; then
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 999 "$@"; then
+            printf "Usage: snt signal pod[:version][@host] [container]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        SIGNAL_POD "$@"
     elif [ "${action}" = "logs" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing arguments: pod[:version] [host tail since]"
+        local _out_rest=
+        local _out_t="0"
+        local _out_l="0"
+        local _out_s="stdout,stderr"
+
+        if ! _GETOPTS "" "t l s" 1 1 "$@"; then
+            printf "Usage: snt logs pod[:version][@host] [-t timestamp] [-l limit] [-s streams]\\n" >&2
             return 1
         fi
-        LOGS "${1}" "${2:-}" "${3:-}" "${4:-}"
+        set -- ${_out_rest}
+        LOGS "${_out_t}" "${_out_l}" "${_out_s}" "$@"
     elif [ "${action}" = "daemon-log" ]; then
-        DAEMON_LOG "${1:-}"
+        local _out_rest=
+        if ! _GETOPTS "" "" 0 1 "$@"; then
+            printf "Usage: snt daemon-log [host]\\n" >&2
+            return 1
+        fi
+        DAEMON_LOG "${_out_rest}"
     elif [ "${action}" = "generate-ingress" ]; then
-        GEN_INGRESS_CONFIG "${1:-}" "${2:-}"
+        local _out_rest=
+        local _out_x=
+        if ! _GETOPTS "" "x" 0 1 "$@"; then
+            printf "Usage: snt generate-ingress [ingressPod[:version]] [-x excludeClusterPorts]\\n" >&2
+            return 1
+        fi
+        GEN_INGRESS_CONFIG "${_out_rest}" "${_out_x}"
     elif [ "${action}" = "set-host-state" ]; then
-        if [ $# -lt 2 ]; then
-            printf "%s\\n" "Missing arguments: host state"
+        local _out_rest=
+        local _out_s=""
+        if ! _GETOPTS "" "s" 1 1 "$@"; then
+            printf "Usage: snt set-host-state host -s active|inactive|disabled\\n" >&2
             return 1
         fi
-        SET_HOST_STATE "${1}" "${2}"
+        set -- ${_out_rest}
+        SET_HOST_STATE "${_out_s}" "$@"
     elif [ "${action}" = "get-host-state" ]; then
-        if [ $# -lt 1 ]; then
-            printf "%s\\n" "Missing argument: host"
+        local _out_rest=
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt get-host-state host\\n" >&2
             return 1
         fi
-        GET_HOST_STATE "${1}"
+        GET_HOST_STATE "${_out_rest}"
+    elif [ "${action}" = "release" ]; then
+        local _out_rest=
+        local _out_m="hard"
+        local _out_p="false"
+        local _out_f="false"
+
+        if ! _GETOPTS "p f" "m" 1 1 "$@"; then
+            printf "Usage: snt release pod[:version] [-p] [-m soft|hard] [-f]\\n" >&2
+            return 1
+        fi
+        PERFORM_RELEASE "${_out_rest}" "${_out_m}" "${_out_p}" "${_out_f}"
     else
         PRINT "Unknown command" "error" 0
         return 1

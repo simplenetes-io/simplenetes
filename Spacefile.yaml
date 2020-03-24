@@ -18,6 +18,8 @@ _env:
     - REMOTE_INIT_HOST:
     - REMOTE_HOST_SETUP:
     - REMOTE_LOGS:
+    - REMOTE_POD_STATUS:
+    - REMOTE_SIGNAL:
     - REMOTE_DAEMON_LOG:
     - REMOTE_CREATE_SUPERUSER:
     - REMOTE_DISABLE_ROOT:
@@ -43,12 +45,11 @@ cluster:
                 Sync each host in the cluster to match the cluster project.
         _env:
             - forceSync:
-                title: Set to "1" to force a sync if it is a rollback or a branch out of the current git commit chain.
+                title: Set to "true" to force a sync if it is a rollback or a branch out of the current git commit chain.
                 value: ${forceSync:-false}
-            - ignoreGitOps:
-                title: Set to "1" to not check git commit chain and cluster ID on host. Do not do this for production clusters.
-                value: ${ignoreGitOps:-false}
-            - RUN: CLUSTER_SYNC -- "${ignoreGitOps}" "${forceSync}"
+            - quite:
+                title: Set to true to not output so much
+            - RUN: CLUSTER_SYNC -- "${forceSync}" "${quite}"
     _info:
         title: The cluster management targets are used to sync files with hosts in the cluster.
     status:
@@ -153,6 +154,13 @@ cluster:
                     value: ${force:-false}
                 - RUN: HOST_INIT -- "${host}" "${force}"
 
+        release_pod:
+            _info:
+                title: Perform a concerted release of a new pod version
+                desc: |
+                    To have a zero downtime release
+
+
 
 hosts:
     _info:
@@ -163,14 +171,11 @@ hosts:
         _info:
             title: List all hosts in this cluster project
         _env:
-            - filter:
-                title: Show active/inactive/disabled
-                desc: |
-                    0=active, inactive and disabled
-                    1=active, and inactive
-                    2=only active
-                value: ${filter:-0}
-            - RUN: LIST_HOSTS -- "${filter}"
+            - all:
+                title: Set to true to list also disabled hosts
+            - showState:
+                title: Set to true to add state column to output
+            - RUN: LIST_HOSTS -- "${all}" "${showState}"
     attach_pod:
         _info:
             title: Attach a Pod to a host, this does not deploy anything nor release anything
@@ -181,10 +186,8 @@ hosts:
                 This function does not verify that the pod exists as a pod in the pods repo.
         _env:
             - pod:
-                title: Name of the pod
-            - host:
-                title: Name of the host to attach pod to
-            - RUN: ATTACH_POD -- "${host}" "${pod}"
+                title: Name of the pod and where to attach it, as: pod@host
+            - RUN: ATTACH_POD -- "${pod}"
     detach_pod:
         _info:
             title: Remove a pod from a host
@@ -195,10 +198,10 @@ hosts:
                 When synced to the cluster, the pod will have its state set to "removed" on the host.
         _env:
             - pod:
-                title: Name of the pod to detach
-            - host:
-                title: Name of the host to detach the pod for
-            - RUN: DETACH_POD -- "${host}" "${pod}"
+                title: Name of the pod to detach as: pod[@host]
+                desc: |
+                    if @host is omitted then pod will be removed from all attached hosts.
+            - RUN: DETACH_POD -- "${pod}"
     list_hosts_with_attached:
         _info:
             title: List all hosts who have a given pod attached
@@ -225,10 +228,10 @@ hosts:
                 This command will abort if the pod.yaml or the cluster.env files have are currenly in an edited but non committed state.
         _env:
             - pod:
-                title: The name of the pod to compile.
-            - host:
-                title: Optional name of the host to compile spec into, default is all hosts to which the pod is attached
-            - RUN: COMPILE_POD -- "${pod}" "${host}"
+                title: The name of the pod to compile, as pod[@host]
+                desc: |
+                    Optional name of the host to compile spec into, default is all hosts to which the pod is attached
+            - RUN: COMPILE_POD -- "${pod}"
     update_pod_config:
         _info:
             title: Re-copy the pod config in the cluster to a specific pod release.
@@ -239,40 +242,84 @@ hosts:
                 The pod release will need to be resynced with the cluster.
         _env:
             - pod:
-                title: The name (and version) of the pod to copy configs to: pod:version
+                title: The name (and version) of the pod to copy configs to: pod[:version][@host]
                 desc: |
                     If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
-            - host:
-                title: Optional name of a host, default is all.
-            - RUN: UPDATE_POD_CONFIG -- "${pod}" "${host}"
+            - RUN: UPDATE_POD_CONFIG -- "${pod}"
+    set_pod_ingress:
+        _info:
+            title: Set the desired ingress state of a specific pod version on one/all attached hosts.
+        _env:
+            - state:
+                title: The desired state of the pod release's ingress
+                values:
+                    - active
+                    - inactive
+            - pod:
+                title: The name (and version) of the pod, as pod[:version][@host]
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+            - RUN: SET_POD_INGRESS_STATE -- "${state}" "${pod}"
+    release:
+        _info:
+            title: Perform a release of a new pod version
+            desc: |
+                Compile the pod and release it in a orchestrated manner.
+                A release can be "soft" or "hard".
+        _env:
+            - pod:
+                title: The name version) of the pod.
+            - mode:
+                title: Mode to use when rolling out the new version
+                values:
+                    - soft
+                    - hard
+            - push:
+                title: Set to true to perform 'git push' operations
+                values:
+                    - false
+                    - true
+            - force:
+                title: Set to true to force sync even when commit chain does not match
+                values:
+                    - false
+                    - true
+            - RUN: PERFORM_RELEASE -- "${pod}" "${mode}" "${push}" "${force}"
+    signal:
+        _info:
+            title: Signal a pod's containers
+        _env:
+            - pod:
+                title: The name (and version) of the pod, as pod[:version][@host]
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+            - containers:
+                title: Specific containers to signal, default is all
+            - RUN: SIGNAL_POD -- "${pod}" ${containers}
     set_pod_state:
         _info:
             title: Set the desired state of a specific pod version on one/all attached hosts.
         _env:
-            - pod:
-                title: The name (and version) of the pod, as pod:version
-                desc: |
-                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
             - state:
                 title: The desired state of the pod release
                 values:
                     - removed
                     - stopped
                     - running
-            - host:
-                title: Name of the host for which to set pod state on
-            - RUN: SET_POD_RELEASE_STATE -- "${pod}" "${state}" "${host}"
+            - pod:
+                title: The name (and version) of the pod, as pod[:version][@host]
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+            - RUN: SET_POD_RELEASE_STATE -- "${state}" "${pod}"
     get_pod_state:
         _info:
             title: Get the desired state of a pod release version for all attached hosts or one given host
         _env:
             - pod:
-                title: The name (and version) of the pod, as pod:version
+                title: The name (and version) of the pod, as pod[:version][@host]
                 desc: |
                     If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
-            - host:
-                title: Name of attached host, default is all attached hosts.
-            - RUN: GET_POD_RELEASE_STATE -- "${pod}" "${host}"
+            - RUN: GET_POD_RELEASE_STATE -- "${pod}"
     generate_ingress_config:
         _info:
             title: Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
@@ -280,9 +327,9 @@ hosts:
                 This command will rewrite the configs for the ingress loadbalancer pods, but the configs must still be synced to the cluster.
         _env:
             - ingresspod:
-                title: Name of the ingress loadbalancer pod which's configs we will update default to 'ingress')
+                title: Name of the ingress loadbalancer pod which's configs we will update default to 'ingress:latest')
             - excludeclusterports:
-                title: List of clusterPorts to exclude from the Ingress
+                title: Comma separated list of clusterPorts to exclude from the Ingress
             - RUN: GEN_INGRESS_CONFIG -- "${ingresspod}" "${excludeclusterports}"
     set_host_state:
         _info:
@@ -313,21 +360,52 @@ hosts:
             - host:
                 title: Name of the host for which to get the state for
             - RUN: GET_HOST_STATE -- "${host}"
+    ls_pod_state:
+        _info:
+            title: Get state for all pod version on one or all hosts
+        _env:
+            - state:
+                title: state to filter for, if any.
+                values:
+                    - running
+                    - stopped
+                    - removed
+            - quite:
+                title: Set to true to do show state column
+            - pod:
+                title: Pod to get logs for, as: pod[@host]
+            - RUN: LS_POD_RELEASE_STATE -- "${state}" "${quite}" "${pod}"
     logs:
         _info:
-            title: Get all logs for a pod
+            title: Get logs for a pod
         _env:
+            - timestamp:
+                title: UNIX timestamp from since to get logs
+            - limit:
+                title: limit nr of lines from top or from bottom if negative
+            - streams:
+                title: Get log for STDOUT and/or STDERR
+                values:
+                    - stdout
+                    - stderr
+                    - stdout,stderr
             - pod:
-                title: Pod to get logs for, as: pod[:version]
-            - host:
-                title: Name of the host for which to get the logs for. Default is all.
-            - tail:
-                title: tail number of lines
-            - since:
-                title: timestamp from since to get logs
-                desc: |
-                    Format 2006-01-02T15:04:05 or UNIX timestamp
-            - RUN: LOGS -- "${pod}" "${host}" "${tail}" "${since}"
+                title: Pod to get logs for, as: pod[:version][@host]
+            - RUN: LOGS -- "${timestamp}" "${limit}" "${streams}" "${pod}"
+    pod_ready:
+        _info:
+            title: Get ready status for the pod
+        _env:
+            - readiness:
+                title: Set to 'true' to only get the readiness status of the pod
+            - quite:
+                title: Set to 'true' to not output info but instead return 1 if not in healthy state
+                values:
+                    - true
+                    - false
+            - pod:
+                title: Pod to get status for, as: pod[:version][@host]
+            - RUN: GET_POD_STATUS -- "${readiness}" "${quite}" "${pod}"
     daemon_log:
         _info:
             title: Get all logs for the systemd Daemon
@@ -401,6 +479,12 @@ _remote_plumbing:
     logs:
         _env:
             - RUN: _REMOTE_LOGS -- "$@"
+    signal:
+        _env:
+            - RUN: _REMOTE_SIGNAL -- "$@"
+    pod_status:
+        _env:
+            - RUN: _REMOTE_POD_STATUS -- "$@"
     daemon_log:
         _env:
             - SPACE_SUDO: sudo
