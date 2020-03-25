@@ -7,13 +7,12 @@
 #  version: 1.3.0 | https://space.sh
 #
 # Node: /cmdline/
-# Simplenetes version 0.1
+# Use snt as a standalone cmd line tool
 
 set -u  # Will not allow for unset variables being used.
 
-PODPATH="${PODPATH:-$PWD/../pods}"
 CLUSTERPATH="${CLUSTERPATH:-$PWD}"
-CLUSTERPATH="${CLUSTERPATH:-$PWD}"
+PODPATH="${PODPATH:-$CLUSTERPATH/../pods}"
 REMOTE_PACK_RELEASEDATA="#!/usr/bin/env sh
 # Script assembled and exported by:
 #     ___ ___  ___  ____ ____  ___ __ __
@@ -29,8 +28,6 @@ REMOTE_PACK_RELEASEDATA="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -246,8 +243,6 @@ REMOTE_SET_COMMITCHAIN="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -342,8 +337,6 @@ REMOTE_ACQUIRE_LOCK="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -537,8 +530,6 @@ REMOTE_RELEASE_LOCK="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -689,8 +680,6 @@ REMOTE_GET_HOSTMETADATA="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -784,8 +773,6 @@ REMOTE_UPLOAD_ARCHIVE="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -940,8 +927,6 @@ REMOTE_UNPACK_ARCHIVE="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -1219,8 +1204,6 @@ REMOTE_INIT_HOST="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -1256,7 +1239,7 @@ _REMOTE_INIT_HOST()
     local file2=\"\${HOME}/.simplenetes-daemon.conf\"
     printf \"%s\\n\" \"\${HOSTHOME}\" >\"\${file2}\"
 
-    PRINT \"Host now belongs to \${clusterID}\" \"ok\" 0
+    PRINT \"Host now belongs to \${clusterID}\" \"info\" 0
 }
 
 STRING_SUBST()
@@ -1382,8 +1365,6 @@ REMOTE_HOST_SETUP="#!/usr/bin/env sh
 { RUN_SU=\$(cat) ; }<<\"0_SU_SPACEGAL_SAYS_END_OF_FINITY_\"
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -1422,7 +1403,7 @@ _REMOTE_HOST_SETUP()
         PRINT \"Could not install podman\" \"error\" 0
     fi
     local podmanVersion=\"\$(podman --version)\"
-    PRINT \"Installed \${podmanVersion}\" \"ok\" 0
+    PRINT \"Installed \${podmanVersion}\" \"info\" 0
 
     # Check /etc/subgid /etc/subuid
         
@@ -2063,8 +2044,6 @@ REMOTE_LOGS="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -2226,8 +2205,6 @@ REMOTE_DAEMON_LOG="#!/usr/bin/env sh
 { RUN_SU=\$(cat) ; }<<\"0_SU_SPACEGAL_SAYS_END_OF_FINITY_\"
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -2293,8 +2270,6 @@ REMOTE_CREATE_SUPERUSER="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -2776,8 +2751,6 @@ REMOTE_DISABLE_ROOT="#!/usr/bin/env sh
 { RUN_SU=\$(cat) ; }<<\"0_SU_SPACEGAL_SAYS_END_OF_FINITY_\"
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -3088,8 +3061,6 @@ REMOTE_SIGNAL="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -3240,8 +3211,6 @@ REMOTE_POD_STATUS="#!/usr/bin/env sh
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH=\"/home/bashlund/tmp/simplenetes-testing/prod-cluster\"
-PODPATH=\"\${CLUSTERPATH}/../pods\"
 SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
 SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
 SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
@@ -3565,12 +3534,13 @@ SNT_CMDLINE()
         SET_POD_RELEASE_STATE "${_out_s}" "$@"
     elif [ "${action}" = "get-pod-state" ]; then
         local _out_rest=
+        local _out_q="false"
 
-        if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt get-pod-state pod[:version][@host]\\n" >&2
+        if ! _GETOPTS "q" "" 1 1 "$@"; then
+            printf "Usage: snt get-pod-state pod[:version][@host] [-q]\\n" >&2
             return 1
         fi
-        GET_POD_RELEASE_STATE "${_out_rest}"
+        GET_POD_RELEASE_STATE "${_out_rest}" "${_out_q}"
     elif [ "${action}" = "ls-pod-state" ]; then
         local _out_rest=
         local _out_q="false"
@@ -3689,9 +3659,9 @@ _SHOW_USAGE()
 
     create-host host [-j jumphost] [-e expose]
         Create a host in the cluster repo by the name 'host'.
-        jumphost is an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
-        If jumphost is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead.
-        expose can be a list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
+        -j jumphost is an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
+            If jumphost is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead.
+        -e expose can be a comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
 
     init-host host
         Initialize a host to be part of the cluster and configure the Daemon to manage it's pods
@@ -3789,8 +3759,13 @@ _SHOW_USAGE()
         -l limit is the maximum number of lines to get, negative gets from bottom (newest)
         -s streams is to get stdout, stderr or both, as: -s stdout | -s stderr | -s stdout,stderr (default)
 
+    signal pod[:version][@host] [container]
+        Signal a pod on a specific host or on all attached hosts.
+        Optionally specify which containers to signal, defualt is all containers in the pod.
+
     release pod[:version] [-p] [-m soft|hard] [-f]
         Perform the compilation and release of a new pod version.
+        This operation expects there to be an Ingress Pod names 'ingress'.
         If 'version' is not provided (or set to 'latest') then compile a new version, if no new version is available quit.
         If 'version' is defined then re-release that version (which is expected have been compiled already).
         -m mode is either soft or hard. Default is hard (quickest).
@@ -4005,11 +3980,11 @@ GEN_INGRESS_CONFIG()
     # Diff current haproxy.cfg with newley generated one
     if ! (printf "%s\\n" "${haproxyConf}" |diff "${haproxyConfPath}" - >/dev/null 2>&1); then
         # Different
-        PRINT "Updating haproxy.cfg in ${ingressConfDir}" "ok" 0
+        PRINT "Updating haproxy.cfg in ${ingressConfDir}" "info" 0
         printf "%s\\n" "${haproxyConf}" >"${haproxyConfPath}"
-        PRINT "Now you need to run 'snt update-config ${ingressPod}:${podVersion}' and then 'snt sync' to put the updated ingress configuration live" "info" 0
+        PRINT "Now you need to run 'snt update-config ${ingressPod}:${podVersion}' and then 'snt sync' to put the updated ingress configuration live" "debug" 0
     else
-        PRINT "No changes in ingress to be made." "ok" 0
+        PRINT "No changes in ingress to be made." "info" 0
     fi
 
     rm -rf "${tmpDir}"
@@ -4021,6 +3996,8 @@ GET_POD_RELEASE_STATE()
 
     local podTriple="${1}"
     shift
+
+    local quite="${1:-false}"
 
     local pod=
     local version=
@@ -4060,7 +4037,12 @@ GET_POD_RELEASE_STATE()
             #PRINT "Version ${podVersion} state not found on host ${host}. Skipping." "warning" 0
             continue
         fi
-        printf "%s:%s@%s %s\\n" "${pod}" "${podVersion}" "${host}" "${state}"
+
+        if [ "${quite}" = "true" ]; then
+            printf "%s\\n" "${state}"
+        else
+            printf "%s:%s@%s %s\\n" "${pod}" "${podVersion}" "${host}" "${state}"
+        fi
     done
 }
 
@@ -4191,8 +4173,7 @@ SET_POD_RELEASE_STATE()
                 continue
             fi
 
-
-            PRINT "Set state of release ${podVersion} on host ${host} to ${state}." "ok" 0
+            PRINT "Set state of release ${podVersion} on host ${host} to ${state}." "info" 0
 
             printf "%s\\n" "${state}" >"${targetPodStateFile}"
 
@@ -4283,6 +4264,7 @@ COMPILE_POD()
     fi
 
     local verbose="${1:-false}"
+    local expectedPodVersion="${2:-}"
 
     local attachedHosts="$(_LIST_ATTACHEMENTS "${pod}")"
 
@@ -4343,6 +4325,8 @@ COMPILE_POD()
         PRINT "podc not available on path, cannot compile pod." "error" 0
         return 1
     fi
+
+    PRINT "Compiling pod ${pod}" "info" 0
 
     ## Now everything is setup for us to compile the pod onto each host it is attached to.
 
@@ -4405,8 +4389,17 @@ COMPILE_POD()
             fi
         done
 
-        PRINT "Host ports auto generated:${newPorts}" "info" 0
+        if [ -n "${newPorts}" ]; then
+            PRINT "Host ports auto generated:${newPorts}" "info" 0
+        fi
         PRINT "Variable names extracted from pod.yaml and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
+        # Check so that all variables are defined in cluster-vars.env, if not issue a warning.
+        local varname=
+        for varname in ${variablesAll}; do
+            if ! grep -q -m 1 "^${varname}=" "${clusterConfig}"; then
+                PRINT "Pod variable ${varname} is not defined in cluster-vars.env" "warning" 0
+            fi
+        done
 
         # For each variable identified in pod.yaml, iterate over it and substitute it for its value
         # Do a first sweep, substituting auto host ports, substituting CAPS global variable for values and adding prefix to all other variables.
@@ -4426,6 +4419,11 @@ COMPILE_POD()
 
         if [ -z "${podVersion}" ]; then
             PRINT "podVersion is missing. Must be on semver format (major.minor.patch[-tag])." "error" 0
+            return 1
+        fi
+
+        if [ -n "${expectedPodVersion}" ] && [ "${expectedPodVersion}" != "${podVersion}" ]; then
+            PRINT "Pod source version ${podVersion} does not match the expected version ${expectedPodVersion}" "error" 0
             return 1
         fi
 
@@ -4492,6 +4490,10 @@ COMPILE_POD()
         return 1
     fi
 
+    if [ -z "${podsCompiled}" ]; then
+        PRINT "Pod not compiled." "error" 0
+    fi
+
     if [ "${verbose}" = "true" ] && [ -n "${podsCompiled}" ]; then
         printf "%s\\n" "${podVersion}"
     fi
@@ -4535,14 +4537,14 @@ DETACH_POD()
 
     local host=
     for host in ${hosts}; do
+        _LOG "${host}" "${pod}" "DETACHED"
         local ts="$(date +%s)"
         if ! mv "${CLUSTERPATH}/${host}/pods/${pod}" "${CLUSTERPATH}/${host}/pods/.${pod}.${ts}"; then
             PRINT "Unexpected disk failure when detaching pod." "error" 0
             return 1
         fi
 
-        PRINT "Pod '${pod}' detached from '${host}'" "ok" 0
-        _LOG "${host}" "${pod}" "DETACHED"
+        PRINT "Pod '${pod}' detached from '${host}'" "info" 0
     done
 
     # Check if this was the last pod on the hosts, if so suggest to remove any pod configs in the cluster.
@@ -4573,6 +4575,11 @@ ATTACH_POD()
         return 1
     fi
 
+    if [ -z "${host}" ]; then
+        PRINT "A host must be provided as podname@host" "error" 0
+        return 1
+    fi
+
     if ! _DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
         PRINT "Host ${host} does not exist." "error" 0
         return 1
@@ -4583,7 +4590,30 @@ ATTACH_POD()
         return 1
     fi
 
-    # TODO: find the pod.yaml and extract variables and store them to cluster-vars.env
+    local podSpec="$(FILE_REALPATH "${PODPATH}/${pod}/pod.yaml")"
+    if [ ! -f "${podSpec}" ]; then
+        PRINT "pod.yaml does not exist as: ${podSpec}" "error" 0
+        return 1
+    fi
+    local text="$(cat "${podSpec}")"
+    local variablesToSubst="$(TEXT_EXTRACT_VARIABLES "${text}")"
+    local varname=
+    for varname in ${variablesToSubst}; do
+        if STRING_IS_ALL "${varname}" "A-Z0-9_"; then
+            # Don't show HOSTPORTAUTOxyz variable names
+            if [ "${varname#HOSTPORTAUTO}" = "${varname}" ]; then
+                PRINT "Variable ${varname} should be defined in cluster-vars.yaml" "info" 0
+            fi
+        else
+            PRINT "Variable ${pod}_${varname} should be defined in cluster-vars.yaml" "info" 0
+        fi
+    done
+
+    local podConfigDir="$(FILE_REALPATH "${PODPATH}/${pod}/config")"
+    if [ ! -d "${podConfigDir}" ]; then
+        PRINT "Pod '${pod}' has no configs to be imported." "info" 0
+        return 0
+    fi
 
     if ! mkdir -p "${CLUSTERPATH}/${host}/pods/${pod}"; then
         PRINT "Could not create directory." "error" 0
@@ -4592,14 +4622,14 @@ ATTACH_POD()
 
     _LOG "${host}" "${pod}" "ATTACHED"
 
-    PRINT "Pod was attached" "ok" 0
+    PRINT "Pod is now attached" "info" 0
 
     # Check if this was the first pod on the hosts, if so suggest to also add any pod configs into the cluster.
     local hosts=
     hosts="$(_LIST_ATTACHEMENTS "${pod}")"
     if [ "${hosts}" = "${host}" ]; then
         if [ ! -d "${CLUSTERPATH}/_config/${pod}" ]; then
-            PRINT "This was the first attachement of this pod to this cluster, if there are configs you might want to import them into the cluster at this point." "info" 0
+            PRINT "This was the first attachement of this pod to this cluster, if there are configs you might want to import them into the cluster at this point. Also any variables referenced in pod.yaml should be defined in cluster-vars.env" "info" 0
         fi
     fi
 }
@@ -5032,6 +5062,8 @@ HOST_CREATE()
         return 1
     fi
 
+    STRING_SUBST "expose" ',' ' ' 1
+
     local port=
     for port in ${expose}; do
         case "${port}" in
@@ -5081,7 +5113,7 @@ JUMPHOST=${jumphost}" >"${dir}/host.env"
 
     printf "%s\\n" "active" >"${dir}/host.state"
 
-    PRINT "Host ${host} created" "ok" 0
+    PRINT "Host ${host} created" "info" 0
     _LOG_C "CREATE_HOST ${host}"
 }
 
@@ -5110,8 +5142,6 @@ CLUSTER_IMPORT_POD_CFG()
     PRINT "Source: Pod config template dir: ${podConfigDir}" "info" 0
     PRINT "Target: Cluster pod config dir: ${clusterPodConfigDir}" "info" 0
 
-    mkdir -p "${CLUSTERPATH}/_config"
-
     local configCommit=
     if ! configCommit="$(_GET_TAG_DIR "${podConfigDir}")"; then
         return 1
@@ -5122,12 +5152,14 @@ CLUSTER_IMPORT_POD_CFG()
         return 1
     fi
 
+    mkdir -p "${CLUSTERPATH}/_config"
+
     if ! cp -r "${podConfigDir}" "${clusterPodConfigDir}"; then
         PRINT "Unexpected disk failure importing configs to cluster project." "error" 0
         return 1
     fi
 
-    PRINT "Configs copied" "ok" 0
+    PRINT "Configs copied" "info" 0
 
     _LOG_C "IMPORT_POD_CFG ${pod}:${configCommit}"
 }
@@ -5693,7 +5725,7 @@ SET_POD_INGRESS_STATE()
                 continue
             fi
 
-            PRINT "Set ingress state of release ${podVersion} on host ${host} to ${state}." "ok" 0
+            PRINT "Set ingress state of release ${podVersion} on host ${host} to ${state}." "info" 0
 
             if [ "${state}" = "active" ]; then
                 if [ -f "${targetPodIngressConfFile}.inactive" ]; then
@@ -5782,12 +5814,6 @@ PERFORM_RELEASE()
     local push="${2:-false}"
     local force="${3:-false}"
 
-    if [ "${force}" = "true" ]; then
-        force="-f"
-    else
-        force=""
-    fi
-
     if [ "${mode}" = "soft" ] || [ "${mode}" = "hard" ]; then
         # All good, fall through
         :
@@ -5796,26 +5822,37 @@ PERFORM_RELEASE()
         return 1
     fi
 
+    if ! _IS_CLUSTER_CLEAN; then
+        PRINT "The cluster git project is not clean and committed. Cannot continue until it is." "error" 0
+        return 1
+    fi
+
+    isCompiled="false"
     local podVersion=
     if [ "${version}" = "latest" ]; then
         # Compile new version
         if ! podVersion="$(COMPILE_POD "${pod}" "true")"; then
             return 1
         fi
+        isCompiled="true"
     else
-        # Podversion is expected to exist and we want to roll over to that version.
-        # Check so that it exists
+        # Either pod version exists or is to be compiled
         local lines=
         lines="$(GET_POD_RELEASE_STATE "${pod}:${version}")"
-        if [ -z "${lines}" ]; then
-            PRINT "${pod}:${version} does not exist" "error" 0
-            return 1
+        if [ -n "${lines}" ]; then
+            PRINT "${pod}:${version} does exist, re-release it" "info" 0
+            podVersion="${version}"
+        else
+            # Compile it for the specified version
+            if ! podVersion="$(COMPILE_POD "${pod}" "true" "${version}")"; then
+                return 1
+            fi
+            isCompiled="true"
         fi
-        podVersion="${version}"
     fi
 
     if [ -z "${podVersion}" ]; then
-        PRINT "Nothing to do. Specify a version to release it, if not compiling new" "error" 0
+        PRINT "Nothing to do. To re-release this pod, run the release again and specifiy the version, as: ${pod}:version" "error" 0
         return 1
     fi
 
@@ -5838,13 +5875,19 @@ PERFORM_RELEASE()
     cd "${CLUSTERPATH}"
     local status=
     if [ "${mode}" = "hard" ]; then
-        _PERFORM_HARD_RELEASE "${pod}" "${podVersion}" "${otherVersions2}"
+        _PERFORM_HARD_RELEASE "${pod}" "${podVersion}" "${otherVersions2}" "${force}" "${isCompiled}"
         status="$?"
     else
-        _PERFORM_SOFT_RELEASE "${pod}" "${podVersion}" "${otherVersions2}"
+        _PERFORM_SOFT_RELEASE "${pod}" "${podVersion}" "${otherVersions2}" "${force}" "${isCompiled}"
         status="$?"
     fi
+
     cd "${dir}"
+
+    if [ "${status}" -gt 0 ]; then
+        PRINT "There was an error releasing. The cluster might be in a incoherent state right now. To resume the release process perform the release again refering to this specific pod version: ${podVersion}" "error" 0
+    fi
+
     return "${status}"
 }
 
@@ -7690,42 +7733,73 @@ _PERFORM_HARD_RELEASE()
     local otherVersions="${1}"
     shift
 
-    PRINT "Perform hard release of ${pod}:${podVersion}" "info" 0
+    local force="${1}"
+    shift
+
+    PRINT "********* Perform hard release of ${pod}:${podVersion} *********" "info" 0
 
     if [ -n "${otherVersions}" ]; then
+        PRINT "********* Retire other versions of the pod." "info" 0
         # Remove the other running pod versions
         if ! SET_POD_RELEASE_STATE "removed" ${otherVersions}; then
             return 1
         fi
     fi
 
-    if ! SET_POD_RELEASE_STATE "running" "${pod}:${podVersion}"; then
+    local currentState="$(GET_POD_RELEASE_STATE "${pod}:${podVersion}" "true")"
+    if [ "${currentState}" != "running" ]; then
+        PRINT "Set pod version ${podVersion} to be 'running'" "info" 0
+        if ! SET_POD_RELEASE_STATE "running" "${pod}:${podVersion}"; then
+            return 1
+        fi
+    else
+        PRINT "Pod version already in the 'running' state" "info" 0
+    fi
+
+    PRINT "********* GENERATE INGRESS *********" "info" 0
+    if ! GEN_INGRESS_CONFIG; then
+        PRINT "Could not generate ingress" "error" 0
         return 1
     fi
 
-    GEN_INGRESS_CONFIG &&
-    UPDATE_POD_CONFIG "ingress" &&
-    git add . &&
-    git commit -m "Hard release ${pod}:${podVersion}, retire other versions, update ingress" || return 1
+    if ! UPDATE_POD_CONFIG "ingress"; then
+        PRINT "Could not update ingress pod config" "error" 0
+        return 1
+    fi
 
-    PRINT "Syncing..." "info" 0
+    if ! { git add . && git commit -q -m "Hard release ${pod}:${podVersion}, retire other versions, update ingress"; } then
+        PRINT "Could not commit changes" "error" 0
+        return 1
+    fi
+
+    PRINT "********* GENERATE INGRESS DONE *********" "info" 0
 
     if [ "${push}" = "true" ]; then
         if ! git push -q; then
+            PRINT "Could not push repo to remote" "error" 0
             return 1
         fi
     fi
+
+    PRINT "********* SYNCING *********" "info" 0
 
     if ! CLUSTER_SYNC "${force}" "true"; then
         return 1
     fi
 
-    git commit . -m "Update sync log after releasing ${pod}:${podVersion}"
-    if [ "${push}" = "true" ]; then
-        git push -q
+    if ! { git add . && git commit -q -m "Update sync log after releasing ${pod}:${podVersion}"; } then
+        PRINT "Could not commit changes" "error" 0
+        return 1
     fi
 
-    PRINT "Done" "info" 0
+    if [ "${push}" = "true" ]; then
+        if ! git push -q; then
+            PRINT "Could not push repo to remote" "error" 0
+            return 1
+        fi
+    fi
+
+    PRINT "********* RELEASE DONE *********" "info" 0
 }
 
 _PERFORM_SOFT_RELEASE()
@@ -7741,24 +7815,47 @@ _PERFORM_SOFT_RELEASE()
     local otherVersions="${1}"
     shift
 
-    PRINT "Perform soft release of ${pod}:${podVersion}" "info" 0
+    local force="${1}"
+    shift
 
-    # Deploy new release, but without any added ingress conf
-    if ! git commit . -m "Soft release ${pod}:${podVersion}"; then
-        return 1
+    local isCompiled="${1}"
+    shift
+
+    PRINT "********* Perform soft release of ${pod}:${podVersion} *********" "info" 0
+
+    local podStateUpdated="false"
+    local currentState="$(GET_POD_RELEASE_STATE "${pod}:${podVersion}" "true")"
+    if [ "${currentState}" != "running" ]; then
+        PRINT "Set pod version ${podVersion} to be 'running'" "info" 0
+        if ! SET_POD_RELEASE_STATE "running" "${pod}:${podVersion}"; then
+            return 1
+        fi
+        podStateUpdated="true"
+    else
+        PRINT "Pod version already in the 'running' state" "info" 0
     fi
 
-    if [ "${push}" = "true" ]; then
-        if ! git push -q; then
+    # Only commit if any changes were made
+    if [ "${podStateUpdated}" = "true" ] || [ "${isCompiled}" = "true" ]; then
+        if ! { git add . && git commit -q -m "Soft release ${pod}:${podVersion}"; } then
             return 1
+        fi
+
+        if [ "${push}" = "true" ]; then
+            if ! git push -q; then
+                PRINT "Could not push repo to remote" "error" 0
+                return 1
+            fi
         fi
     fi
 
+    PRINT "********* SYNCING *********" "info" 0
+    # If force is set, only force on the first sync, the coming syncs should be in line
     if ! CLUSTER_SYNC "${force}" "true"; then
         return 1
     fi
 
-    PRINT "Wait for new release to run..." "info" 0
+    PRINT "********* Wait for new release to run... *********" "info" 0
 
     # Wait for a while to get the status of the new release
     local podStatus=
@@ -7771,16 +7868,21 @@ _PERFORM_SOFT_RELEASE()
         fi
 
         now="$(date +%s)"
-        if $((now > timeout)); then
-            PRINT "Timeout trying to get pod readiness, aborting now. Rerun this release process" "error" 0
-            PRINT "New release: '${pod}:${podVersion}' failed to run. Remove it" "error" 0
-            SET_POD_RELEASE_STATE "removed" "${pod}:${podVersion}"
-            git commit . -m "New release ${pod}:${podVersion} failed to run. Remove it"
-            if [ "${push}" = "true" ]; then
-                git push -q
+        if [ "$((now > timeout))" -eq 0 ]; then
+            PRINT "Timeout trying to get pod readiness, aborting now. This could be due to a problem with the pod it self or due to network issues" "error" 0
+            if [ "${podStateUpdated}" = "true" ] || [ "${isCompiled}" = "true" ]; then
+                PRINT "Setting version ${podVersion} as 'removed' and syncing again" "info" 0
+                SET_POD_RELEASE_STATE "removed" "${pod}:${podVersion}"
+                git add . && git commit -q -m "New release ${pod}:${podVersion} failed to run. Set state to 'removed' and sync"
+                if [ "${push}" = "true" ]; then
+                    if ! git push -q; then
+                        PRINT "Could not push repo to remote" "error" 0
+                        return 1
+                    fi
+                fi
+                CLUSTER_SYNC "" "true"
+                return 1
             fi
-            CLUSTER_SYNC "${force}" "true"
-            return 1
         fi
     done
 
@@ -7788,23 +7890,38 @@ _PERFORM_SOFT_RELEASE()
     PRINT "Update the ingress" "info" 0
 
     # New release is up and running, regenerate the ingress
-    # Note that if the new version uses the same clusterPorts as the previous version (yes, unless using AUTOCLUSTERPORT) then
+    # Note that if the new version uses the same clusterPorts as the previous version then
     # it will start recieving traffic as soon as it is running.
+    # To have a fully isolated handover of traffic a new clusterPort must be used for the new release.
+    #
     # This ingress conf regeneration might not change anything in the ingress.
-    GEN_INGRESS_CONFIG &&
-    UPDATE_POD_CONFIG "ingress" &&
-    git add . &&
-    git commit -m "Update ingress for ${pod}:${podVersion}"
+    if ! GEN_INGRESS_CONFIG; then
+        PRINT "Could not generate ingress" "error" 0
+        return 1
+    fi
 
-    # TODO: know if ingress got updated
+    if ! UPDATE_POD_CONFIG "ingress"; then
+        PRINT "Could not update ingress pod config" "error" 0
+        return 1
+    fi
+
+    # Even if no ingress conf was changed, there will by new logfiles, so this commit should not fail.
+    if ! { git add . && git commit -q -m "Update ingress for ${pod}:${podVersion}"; } then
+        PRINT "Could not commit changes" "error" 0
+        return 1
+    fi
+
+    # TODO: how to know if ingress got updated
     if true; then
         if [ "${push}" = "true" ]; then
             if ! git push -q; then
+                PRINT "Could not push repo to remote" "error" 0
                 return 1
             fi
         fi
 
-        if ! CLUSTER_SYNC "${force}" "true"; then
+        PRINT "********* SYNCING *********" "info" 0
+        if ! CLUSTER_SYNC "" "true"; then
             return 1
         fi
 
@@ -7818,32 +7935,46 @@ _PERFORM_SOFT_RELEASE()
         if ! SET_POD_INGRESS_STATE "inactive" ${otherVersions}; then
             return 1
         fi
-        git commit . -m "Remove other running versions from ingress: ${otherVersions}"
+        git add . && git commit -m "Remove other running versions from ingress: ${otherVersions}"
         if [ "${push}" = "true" ]; then
-            git push -q
+            if ! git push -q; then
+                PRINT "Could not push repo to remote" "error" 0
+                return 1
+            fi
         fi
-        if ! CLUSTER_SYNC "${force}" "true"; then
+        PRINT "********* SYNCING *********" "info" 0
+        if ! CLUSTER_SYNC "" "true"; then
             return 1
         fi
 
         # Wait so that ingress get's updated
+        PRINT "Waiting for ingress to get updated..." "info" 0
         sleep 20
 
         # Remove the other pod versions
         if ! SET_POD_RELEASE_STATE "removed" ${otherVersions}; then
             return 1
         fi
-        git commit . -m "Retire other running versions: ${otherVersions}"
+        git add . && git commit -m "Retire other running versions: ${otherVersions}"
         if [ "${push}" = "true" ]; then
-            git push -q
+            if ! git push -q; then
+                PRINT "Could not push repo to remote" "error" 0
+                return 1
+            fi
         fi
-        CLUSTER_SYNC "${force}" "true"
+        PRINT "********* SYNCING *********" "info" 0
+        CLUSTER_SYNC "" "true"
     fi
 
-    git commit . -m "Update sync log after releasing ${pod}:${podVersion}"
+    git add . && git commit -m "Update sync log after releasing ${pod}:${podVersion}"
     if [ "${push}" = "true" ]; then
-        git push -q
+        if ! git push -q; then
+            PRINT "Could not push repo to remote" "error" 0
+            return 1
+        fi
     fi
+
+    PRINT "********* RELEASE DONE *********" "info" 0
 }
 
 CONF_READ()
