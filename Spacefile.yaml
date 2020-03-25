@@ -4,8 +4,7 @@ _info:
     title: Simplenetes version 0.1
 _env:
     - CLUSTERPATH: ${CLUSTERPATH:-$PWD}
-    - PODPATH: ${PODPATH:-\${CLUSTERPATH\}/../pods}
-    - RUN_ALIAS: /help/
+    - PODPATH: ${PODPATH:-\$CLUSTERPATH/../pods}
       # Declaring these variables here to not throw undefined errors when in space mode.
       # When exporting script for release these will be defined.
     - REMOTE_PACK_RELEASEDATA:
@@ -23,11 +22,6 @@ _env:
     - REMOTE_DAEMON_LOG:
     - REMOTE_CREATE_SUPERUSER:
     - REMOTE_DISABLE_ROOT:
-help:
-    _env:
-        - SPACE_ENV: CLUSTERPATH PODPATH
-        - RUN_ALIAS: !unset
-        - RUN: ${RUN:-HELP}
 cluster:
     create_cluster:
         _info:
@@ -434,8 +428,9 @@ cmdline:
     _info:
         title: Use snt as a standalone cmd line tool
     _env:
-        - PODPATH: \${PODPATH:-\$PWD/../pods}
+        # Set these variable so they are assigned at runtime
         - CLUSTERPATH: \${CLUSTERPATH:-\$PWD}
+        - PODPATH: \${PODPATH:-\$CLUSTERPATH/../pods}
         - RUN: SNT_CMDLINE -- "\$@"
 
 
