@@ -2,13 +2,14 @@
 
     - Pods
         A Simplenetes (container) Pod is the same as a Kubernetes Pod in the sense that it is one or many containers which are managed together and share the same network.
-        A Simplenetes (container) pod is described in a simple `pod.yaml` format and is compiled into a standalone shell script, which can be run as is or managed by the Simplenetes Daemon (sntd).
-        The `pod.sh` shell script uses `podman` to run containers, which has the benefit of not running containers as `root`.
+        A Simplenetes Pod is described in a simple `pod.yaml` format and is compiled into a standalone shell script which uses `podman` as container runtime.
+        It can be run as is or managed by the Simplenetes Daemon (sntd).
+        The `pod` shell script uses `podman` to run containers, which has the benefit of not running containers as `root`.
         There are three special Pods in Simplenetes which most often are used in Cluster (but do not have to be):
             - The IngressPod (inbound traffic routing and TLS termination coming from the interwebz)
             - The LetsEncryptPod (renews SSL/TLS certificates for all domains and makes them available to the IngressPod)
-            - The ProxyPod (internal traffic routing so Pods can talk to Pods)
-        Actually, Simplenetes pods do not have to be containers at all. A Simplenetes Pod is an executable named `pod.sh` which conforms to the Pod API.
+            - The ProxyPod is an internal traffic routing so Pods can talk to other Pods on other hosts or on the same host.
+        Actually, Simplenetes pods do not have to be containers at all. A Simplenetes Pod is an executable named `pod` which conforms to the Pod API.
         The `ProxyPod` above does not run any containers, it runs directly on the Host as a native application, but it is managed just as a Pod.
     - Host
         A Virtual Machine, a bare metal machine, or your laptop. Which is part of a Cluster.
@@ -19,27 +20,27 @@
     - Clusters and Cluster projects
         A Cluster is a cluster of Hosts on the same VLAN.
         A Cluster is typically one or two frontend Hosts which are exposed to the internet on ports 80 and 443 and a couple of backend hosts where pods are running.
-        A Cluster is spread on many Hosts and is mirrored as a git repo cluster project on the operators local disk. This gives good GitOps procedures. It also makes so you can
+        A Cluster is spread on many Hosts and is mirrored as a git repo cluster project on the operators local disk (or in a CI/CD system). This gives good GitOps procedures. It also makes so you can
               inspect the full cluster layout in the git repo cluster project.
         A Cluster Project is a git repo which represents the Cluster, which is managed by the `snt` tool.
     - Management Project
         A Management Project is an overarching git repo used to manage one or more cluster projects, Pods and SSH keys.
-        While it is strictly not needed to manage a Simplenetes Cluster, it does bring some organisational benefits and enables features such as CI/CD and separation of roles.
+        While it is strictly not needed to manage a Simplenetes Cluster, it does bring some organisational benefits and enables features such as separation of roles and protection of keys.
     - Daemon (sntd)
         The Simplenetes Daemon needs to be installed on each Host in a Cluster to manage the lifecycle of all the Pods, regardless of their runtime type (podman, executable, etc).
         The Simplenetes Daemon is installed with root priviligies so that it can create `ramdisks` for the Pods, but it drops its priviligies when it interacts with any pod executable.
         The Daemon can be run in user mode and is then considered being run in "dev mode" for a single user straight on the laptop.
 
 ## Pods
-A Simplenetes Pod is a `pod.sh` file which conforms to a specific API. Typically the Pod is a collection of containers which run a service, but it does not have to be, it can be any executable which implements the Pod API (see the pod compiler project for the API spec).
+A Simplenetes Pod is an executable `pod` file which conforms to a specific API. Typically the Pod is a collection of containers which run a service, but it does not have to be, it can be any executable which implements the Pod API (see the pod compiler project for the API spec).
 
 ### Pod compiler
-There is a separate project which compiles `pod.yaml` files into standalone `pod.sh` files which use `podman` as container runtime.
+There is a separate project which compiles `pod.yaml` files into standalone `pod` executables which use `podman` as the container runtime.
 
 ### Other Pod types
 For example the Simplenetes Proxy is treated as a regular Pod, but is is not containerized. The proxy is listens to a wast array of ports and it is more efficient to not bind all those ports into a container, therefore the binary better runs outside of podman and straight on the Host.
 
-The Simplenetes Daemon however does not know the difference, as long as the proxy has a `pod.sh` file and conforms to the Pod API the Daemon can manage it's lifecycle.
+The Simplenetes Daemon however does not know the difference, as long as the proxy has a `pod` executable and conforms to the Pod API the Daemon can manage it's lifecycle.
 
 ## Clusters and Cluster Projects
 A Cluster is a set of Hosts (one or many) on the same VLAN. A Cluster can simply be your laptop, which is great for development.
@@ -50,7 +51,7 @@ When syncing to a Cluster from a Cluster Project, Simplenetes will connect to ea
 
 The Daemon running on each Host will pick up the changes and manage the changes to pods.
 
-Setting up the Cluster with it's Virtual Machines is outside the scope of this document but is describe here <link>.
+Setting up the Cluster with it's Virtual Machines is outside the scope of this document but is describe here [PROVISIONING.md](PROVISIONING.md)
 Typically the setup is a VPC with two frontend hosts which are exposed to the internet and are open to ports 80 and 443. Also two backend hosts which only accepts traffic coming from within the VLAN. Finally a fifth host which we call the "backdoor" which is exposed to the internet on port 22 (or some other port) for SSH connections. All SSH connections made to any frontend or backend host is always jumped via the backdoor host. This reduces the surface area of attack since none of the known IP addresses are open to SSH connections from the internet.
 
 ## Hosts
@@ -58,9 +59,9 @@ A Host is typically a Virtual Machine in a VLAN, but it can also be your local l
 
 When Simplenetes is connecting to a Host is reads the `host.env` file and uses that information to establish an SSH connection to the Host.
 
-If the `host.env` file has `LOCAL=true` set then it does not connect via SSH, it connects directly on local disk, which is great for local development.
-
 A Host can declare in it's `host.env` file a `JUMPHOST`, which is used in the SSH connection to connect to first before connecting to the actual Host. This is a recommended way of doing it to not exposing backend Hosts to the public internet at all, so that all connections made must be made via `jumphosts`.
+
+If the `host.env` file has `JUMPHOST=local` set then it does not connect via SSH, it connects directly on local disk, which is great for local development.
 
 ## Proxy and clusterPorts
 For Pods to be able to communicate with each other within the Cluster and across Hosts, there is a concept of `clusterPorts` and the `Simplenetes Proxy`.
@@ -76,12 +77,12 @@ The Proxy is very clever and robust and requires very little configurations to w
 ## Management Projects
 While not strictly needed an overarching git repo which works as parent to the cluster project, pods and ssh keys can be very sane to use.
 
-With a Management Project you can collect your personal SSH keys in one place.
+With a Management Project you can collect your personal SSH keys in one secure place and don't have to distribute them together with the cluster project.
 You can manage multiple clusters from the same place, say for "dev", "staging" and "production".
 You can collect the Pods you are using to be shared by different clusters.
 
-Projects are a good way of separating concerns also when developing pods and releasing them. If wanting CI/CD practices then a Project will help you have a solid and safe process around that.
+Projects are a good way of separating concerns also when developing pods and releasing them.
 
 ## Daemon
 The Simplenetes Daemon is responsible for the lifecycle of Pods.  
-It reads `.state` files alongside the `pod.sh` file and executes the `pod.sh` file with arguments relating to the desired state of the pod.
+It reads `.state` files alongside the `pod` file and executes the `pod` file with arguments relating to the desired state of the pod.

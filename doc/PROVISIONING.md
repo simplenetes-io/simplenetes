@@ -19,7 +19,7 @@ echo "production-cluster-1" >cluster-id.txt
 snt create-host loadbalancer1
 
 # Create a worker host, using the loadbalancer1 as jumphost
-snt create-host worker1 "../loadbalancer1"
+snt create-host worker1 -j "../loadbalancer1"
 ```
 
 Each host is created as a sub directory inside the cluster project. Each host has a new `id_rsa` key generated and a `host.env` vars file created which we will need to fill in the details for as soon as we have created the virtual machines.

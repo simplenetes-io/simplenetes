@@ -9,7 +9,7 @@ A dev cluster works exactly as a production cluster, with the differences that:
 
     - there is only one host, your laptop
     - the `sntd` Daemon process is often run in foreground user mode and never installed as a systemd unit.
-    - certificates cannot be issued, since it's a closed system and public DNS does not point 
+    - certificates cannot be issued, since it's a closed system and public DNS is not applicable.
 
 If you only want to compile a single pod to use locally or want to learn more about Simplenetes Pods and the Podcompiler, we suggest reading [FIRSTPOD.md](FIRSTPOD.md).  
 
@@ -50,7 +50,7 @@ You can change the cluster ID at this point directly in `cluster-id.txt`, but do
 Now, let's create a Host which is not a Virtual Machine but instead refers to our laptop, the second argument "local" states that this is a local disk host  
 ```sh
 cd dev-cluster
-snt create-host my-laptop local
+snt create-host my-laptop -j local
 ```
 This will create a directory `my-laptop` which represents the Host. Inside the directory there will be two files: 
 
@@ -93,7 +93,7 @@ Note that a Pod is always attached to a specific Host, one or many. In Kubernete
 
 From inside the `dev-cluster` dir, type:  
 ```sh
-snt attach-pod my-laptop webserver
+snt attach-pod webserver@my-laptop
 ```
 
 Simplenetes says that:  
@@ -137,7 +137,7 @@ From inside the `dev-cluster` dir, type:
 snt compile webserver
 ```
 
-At this point you can see in `dev-cluster/pods/webserver/release/0.0.1/` that we have the compiled `pod.sh`, the `pod.state` which dictates what state the pod should be in and the `config` dir which holds all configs.
+At this point you can see in `dev-cluster/pods/webserver/release/0.0.1/` that we have the compiled `pod`, the `pod.state` which dictates what state the pod should be in and the `config` dir which holds all configs.
 
 ### 5. Sync the cluster locally
 After we have updated a cluster repo with new pod release (or updated configs for an existing release) we can sync the cluster repo to the Cluster of Hosts.
@@ -181,7 +181,7 @@ The Daemon should now be running and it will react on any changes to the pods or
 
 How can we `curl` to the pod? Remember that the `pod.yaml` has a `clusterPort` configured? That means the pod will be reachable on in the Cluster on that port, as soon as we setup the internal Proxy. However we want to try it out now, so we can go straight to the given `hostPort` of the pod. Remember the `${HOSTPORTAUTOx}`? This will be a automatically generated port number in the high ranges. We can't know on beforehand what it is, because it will be the first non-taken port on the Host.
 
-We can find out what it is. Locate the directory in your cluster repo where the `pod.sh` file is:  
+We can find out what it is. Locate the directory in your cluster repo where the `pod` file is:  
 ```sh
 cd dev-cluster/my-laptop/pods/webserver/release/<version>
 cat pod.proxy.conf
@@ -275,7 +275,7 @@ If we are happy with our new release, we can then retire the previous version. I
 
 ```sh
 cd dev-cluster
-snt set-pod-state webserver:0.0.1 removed
+snt set-pod-state webserver:0.0.1 -s removed
 ```
 
 We need to commit our changes before we sync:  
@@ -305,7 +305,7 @@ In a proper cluster we would attach the IngressPod to the hosts which are expose
 
 ```sh
 cd dev-cluster
-snt attach-pod my-laptop ingress
+snt attach-pod ingress@my-laptop
 ```
 
 We need to import the config templates from the pod because they are needed by `snt` when generating the `haproxy` configuration.  
@@ -346,7 +346,7 @@ The ProxyPod should be attached to every Host in the Cluster, in our case it is 
 
 ```sh
 cd dev-cluster
-snt attach-pod my-laptop proxy
+snt attach-pod proxy@my-laptop
 ```
 
 ```sh

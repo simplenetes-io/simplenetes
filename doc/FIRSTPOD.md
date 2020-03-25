@@ -69,8 +69,8 @@ When attaching a pod to a cluster project and compiling it, this local `pod.env`
 
 Create a pod dir a `pod.yaml` and a `pod.env` file:  
 ```sh
-mkdir my-pod
-cd my-pod
+mkdir mypod
+cd mypod
 cat >pod.yaml
 <ctrl-v to paste the YAML you copied from above, hit enter>
 <ctrl-d>

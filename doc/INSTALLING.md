@@ -8,7 +8,7 @@ There are three main components of Simplenetes which can be installed:
 
 To manage a cluster, at least the `snt` tool needs to be installed.  
 If managing the cluster also means compiling pods to create new releases then also `podc` needs to be installed.  
-The Daemon `(sntd)` is always installed on the virtual machines in your cluster, but can also be installed locally on your laptop to simulate working on a cluster.
+The Daemon `(sntd)` should always installed on the hosts in your cluster, but can also be installed locally on your laptop to simulate working on a cluster.
 
 ## Prerequisites
 To run pods you will need `podman version>=1.8.1` installed and `slirp4netns` to run pods as rootless. To install Podman and slirp4netns please refer to your distributions package manager.  
@@ -51,21 +51,11 @@ It can also be installed onto your GNU/BusyBox/Linux laptop to simulate working 
 When installing it locally it does not have to be installed as a Daemon, but can instead be run in user mode as a foreground process.
 The Daemon activates the pod scripts which uses `podman` to run containers. Podman version >=1.8.1 also has to be installed on each host.  
 
-To provision new hosts and clusters, please see [PROVISIONING.md](PRODCLUSTER.md).  
+To provision new hosts and clusters, please see [PROVISIONING.md](PROVISIONING.md).  
 
-Install `sntd` straight from GitHub, as:  
+You can install `sntd` to run it locally in dev mode straight from GitHub, as:  
 ```sh
 wget github.com/simpletenes/sntd/release/sntd
 chmod +x sntd
 sudo mv sntd /usr/local/bin
 ```
-
-### Installing as a system daemon
-You can use `snt` to install the Daemon as a system daemon on a remote Host (or your laptop) as long as it is using systemd as the init system.  
-This requires that you have a cluster project setup already with the hosts defined.  
-
-Install the `sntd` onto the host `my-laptop`, this can be done over SSH or directly onto the laptop if the `JUMPHOST=local` variable is set in the `host.env` file.
-```sh
-snt install-daemon my-laptop
-```
-This will download and install the latest released `sntd` executable and set it up with systemd on the host.
