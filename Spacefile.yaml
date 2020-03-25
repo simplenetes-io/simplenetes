@@ -319,7 +319,9 @@ hosts:
                 title: The name (and version) of the pod, as pod[:version][@host]
                 desc: |
                     If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
-            - RUN: GET_POD_RELEASE_STATE -- "${pod}"
+            - quite:
+                title: Set to 'true' to only print the state column
+            - RUN: GET_POD_RELEASE_STATE -- "${pod}" "${quite}"
     generate_ingress_config:
         _info:
             title: Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
