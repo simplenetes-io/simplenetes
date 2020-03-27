@@ -1814,7 +1814,7 @@ _PRJ_HOST_INIT()
 
 _PRJ_HOST_CREATE()
 {
-    SPACE_SIGNATURE="host jumphost expose"
+    SPACE_SIGNATURE="host jumphost expose hostHome"
     SPACE_DEP="PRINT _PRJ_DOES_HOST_EXIST _PRJ_LOG_C STRING_TRIM STRING_ITEM_INDEXOF STRING_SUBST"
     SPACE_ENV="CLUSTERPATH"
 
@@ -1825,6 +1825,9 @@ _PRJ_HOST_CREATE()
     shift
 
     local expose="${1}"
+    shift
+
+    local hostHome="${1:-\${HOME}/cluster-host}"
     shift
 
     if _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
@@ -1865,7 +1868,7 @@ _PRJ_HOST_CREATE()
 # You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
 
 # HOSTHOME is the directory on the host where this local host sync to.
-HOSTHOME=\${HOME}/cluster-host
+HOSTHOME=${hostHome}
 # ROUTERADDRESS is the the IP:port within the cluster where this host's Proxy service can be reached at. Most often localIP:2222.
 ROUTERADDRESS=
 # HOST is the public or private IP of the Host. If using a JUMPHOST, then it is likely the internal IP, of not the it is the public IP.

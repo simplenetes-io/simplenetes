@@ -37,6 +37,13 @@ _REMOTE_PACK_RELEASE_DATA()
 {
     local _SPACE_NAME=\"_REMOTE_PACK_RELEASE_DATA\"
 
+    _SYNC_REMOTE_PACK_RELEASE_DATA \"\$@\"
+}
+
+_SYNC_REMOTE_PACK_RELEASE_DATA()
+{
+    local _SPACE_NAME=\"_SYNC_REMOTE_PACK_RELEASE_DATA\"
+
     local HOSTHOME=\"\${1}\"
     shift
     STRING_SUBST \"HOSTHOME\" '\${HOME}' \"\$HOME\" 1
@@ -791,9 +798,9 @@ _REMOTE_UPLOAD_ARCHIVE()
 
     local file=\"\$(_UTIL_GET_TMP_FILE)\"
 
-    PRINT \"Receive archive on host to file \${file}\" \"info\" 0
+    PRINT \"Receive archive on host to file \${file}\" \"debug\" 0
 
-    # Tell the caller what the tmpfilename is.
+    # Tell the caller the path of tmpfile.
     printf \"%s\\n\" \"\${file}\"
 
     # Receive tar.gz content on stdin and store it to file.
@@ -935,6 +942,13 @@ SPACE_MUTE_EXIT_MESSAGE=\"\${SPACE_MUTE_EXIT_MESSAGE:-1}\"
 _REMOTE_UNPACK_ARCHIVE()
 {
     local _SPACE_NAME=\"_REMOTE_UNPACK_ARCHIVE\"
+
+    _SYNC_REMOTE_UNPACK_ARCHIVE \"\$@\"
+}
+
+_SYNC_REMOTE_UNPACK_ARCHIVE()
+{
+    local _SPACE_NAME=\"_SYNC_REMOTE_UNPACK_ARCHIVE\"
 
     local HOSTHOME=\"\${1}\"
     shift
@@ -3407,12 +3421,13 @@ SNT_CMDLINE()
     elif [ "${action}" = "create-host" ]; then
         local _out_j=
         local _out_e=
+        local _out_h=
         local _out_rest=
-        if ! _GETOPTS "" "j e" 1 1 "$@"; then
-            printf "Usage: snt create-host host [-j jumphost] [-e expose]\\n" >&2
+        if ! _GETOPTS "" "j e r" 1 1 "$@"; then
+            printf "Usage: snt create-host host [-j jumpHost] [-e expose [-h hostHome]]\\n" >&2
             return 1
         fi
-        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}"
+        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}" "${_out_h}"
     elif [ "${action}" = "init-host" ]; then
         local _out_f="false"
         local _out_rest=
@@ -3656,11 +3671,12 @@ USAGE()
     import-config pod
         Import config templates from pod repo into the cluster project
 
-    create-host host [-j jumphost] [-e expose]
+    create-host host [-j jumpHost] [-e expose] [-h hostHome]
         Create a host in the cluster repo by the name 'host'.
         -j jumphost is an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
             If jumphost is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead.
         -e expose can be a comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
+        -h hostHome can be specified
 
     init-host host
         Initialize a host to be part of the cluster and configure the Daemon to manage it's pods
@@ -3964,7 +3980,10 @@ HOST_CREATE()
     local expose="${1:-}"
     shift $(($# > 0 ? 1 : 0))
 
-    _PRJ_HOST_CREATE "${host}" "${jumpHost}" "${expose}"
+    local hostHome="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    _PRJ_HOST_CREATE "${host}" "${jumpHost}" "${expose}" "${hostHome}"
 }
 
 CLUSTER_IMPORT_POD_CFG()
@@ -5477,6 +5496,9 @@ _PRJ_HOST_CREATE()
     local expose="${1}"
     shift
 
+    local hostHome="${1:-\${HOME}/cluster-host}"
+    shift
+
     if _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
         PRINT "Host ${host} does already exist." "error" 0
         return 1
@@ -5515,7 +5537,7 @@ _PRJ_HOST_CREATE()
 # You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
 
 # HOSTHOME is the directory on the host where this local host sync to.
-HOSTHOME=\${HOME}/cluster-host
+HOSTHOME=${hostHome}
 # ROUTERADDRESS is the the IP:port within the cluster where this host's Proxy service can be reached at. Most often localIP:2222.
 ROUTERADDRESS=
 # HOST is the public or private IP of the Host. If using a JUMPHOST, then it is likely the internal IP, of not the it is the public IP.
@@ -8815,7 +8837,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
 
     PRINT "Using tmp dir ${tmpDir}" "debug"
 
-    # Check cluster-hosts.txt
+    # Compare cluster-hosts.txt on host with what we have locally.
     local hostsRouter="$(_PRJ_GET_ROUTER_HOSTS)"
     local updateHosts="0"
     local item=

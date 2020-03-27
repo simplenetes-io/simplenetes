@@ -392,6 +392,8 @@ _SYNC_RUN2()
 
 # Look at the release data retrieved from the host and compare it to what is on disk in the cluster project.
 # Create a new archive which can be uploaded to the host for it to get in sync.
+# return 0 on success
+# stdout: path to tmp dir with all files to sync to host
 _SYNC_BUILD_UPDATE_ARCHIVE()
 {
     SPACE_SIGNATURE="host hostreleasedata"
@@ -413,7 +415,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
 
     PRINT "Using tmp dir ${tmpDir}" "debug"
 
-    # Check cluster-hosts.txt
+    # Compare cluster-hosts.txt on host with what we have locally.
     local hostsRouter="$(_PRJ_GET_ROUTER_HOSTS)"
     local updateHosts="0"
     local item=
@@ -806,4 +808,252 @@ _SYNC_GET_METADATA()
     PRINT "Could not get metadata." "error" 0
     # Failed
     return 1
+}
+
+# This is run on the host and puts together a list of the current state of the releases of pods.
+# From the host download a list of all pods,
+# their releases, their states and their configs hashes.
+_SYNC_REMOTE_PACK_RELEASE_DATA()
+{
+    SPACE_SIGNATURE="hosthome"
+    SPACE_DEP="STRING_SUBST PRINT"
+
+    local HOSTHOME="${1}"
+    shift
+    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+
+    # Indicate we are still busy
+    touch "${HOSTHOME}/lock-token.txt"
+
+    local data=""
+
+    # Get the host list
+    local hostFile="${HOSTHOME}/cluster-hosts.txt"
+    local hosts=""
+    if [ -f "${hostFile}" ]; then
+        hosts="$(cat "${hostFile}")"
+        local newline="
+"
+        STRING_SUBST "hosts" "${newline}" ";" 1
+    fi
+    data="${data}${data:+ }:hosts:${hosts}"
+
+    local livePods="${HOSTHOME}/pods"
+
+    if ! cd "${HOSTHOME}/pods" 2>/dev/null; then
+        printf "%s\\n" "${data}"
+        return 0
+    fi
+    local pod=
+    for pod in *; do
+        if [ ! -d "${pod}/release" ]; then
+            continue
+        fi
+        cd "${pod}/release"
+
+        local release=
+        for release in *; do
+            if [ ! -d "${release}" ]; then
+                continue
+            fi
+            cd "${release}"
+
+            # Get the state of the pod
+            local state=
+            if ! state="$(cat "pod.state" 2>/dev/null)"; then  # There should only be one state file present.
+                # No state file, this is treated as removed
+                cd ..  # Step out of specific release
+                continue
+            fi
+            data="${data}${data:+ }${pod}:${release}:${state}"
+
+            # Check if this pod has configs
+            if [ ! -d "config" ]; then
+                cd ..  # Step out of specific release
+                continue
+            fi
+
+            # Step into config dir and update the configs in the config dir
+            cd "config"
+
+            local dir="${livePods}/${pod}/release/${release}/config"
+            local config=
+            for config in *; do
+                if [ ! -d "${config}" ]; then
+                    continue
+                fi
+                # This could be a config directory.
+                local chksumFile="${dir}/${config}.txt"
+                if [ -f "${chksumFile}" ]; then
+                    # This is the chksum file for the config, read it.
+                    local chksum="$(cat "${chksumFile}")"
+                    # Sanatize it if it is corrupt, because a space here can ruin the whole thing.
+                    STRING_SUBST "chksum" " " "" 1
+                    data="${data} ${pod}:${release}:${config}:${chksum}"
+                fi
+            done
+
+            cd ..  # Step out of "config" dir
+            cd ..  # Step out of release version dir
+        done
+        cd ../..  # Step out of "pod/release" dir
+    done
+    cd ../..  # Step out of "pods" dir
+
+    printf "%s\\n" "${data}"
+}
+
+# After sending a tar.gz file to the server we run this
+# function on the server to unpack that file.
+# It unpacks the file into a tmp directory.
+# It will then take each file from tmp dir and mv it to the
+# corresponding place in the structure in the pods dir (overwriting).
+# If it is a config directory it will delete all files from
+# the config and then mv the new files into that same config dir.
+# We must keep the config dir because it's inode is mounted into a container
+# and creating a new dir will not work unless recreating the container.
+_SYNC_REMOTE_UNPACK_ARCHIVE()
+{
+    SPACE_SIGNATURE="hosthome targzfile"
+    SPACE_DEP="_UTIL_GET_TMP_DIR PRINT STRING_SUBST"
+
+    local HOSTHOME="${1}"
+    shift
+    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+
+    local archive="${1}"
+    shift
+
+    local tmpDir="$(_UTIL_GET_TMP_DIR)"
+
+    # Indicate we are still busy
+    touch "${HOSTHOME}/lock-token.txt"
+
+    PRINT "Unpack archive on host to ${HOSTHOME}" "info" 0
+
+    if ! tar xzf "${archive}" -C "${tmpDir}"; then
+        PRINT "Could not unpack archive." "error" 0
+        return 1
+    fi
+    rm "${archive}"
+
+    if ! cd "${tmpDir}"; then
+        PRINT "Could not unpack archive as expected." "error" 0
+        return 1
+    fi
+
+    # Check the cluster-hosts.txt file
+    if [ -f "cluster-hosts.txt" ]; then
+        PRINT "Update cluster-hosts.txt" "info" 0
+        mv -f "cluster-hosts.txt" "${HOSTHOME}"
+    fi
+
+    if [ ! -d "pods" ]; then
+        # No pods to update
+        rm -rf "${tmpDir}"
+        PRINT "No pods to update, done unpacking updates." "info" 0
+        return 0
+    fi
+
+    cd "pods"
+
+    local livePods="${HOSTHOME}/pods"
+
+    # Indicate we are still busy
+    touch "${HOSTHOME}/lock-token.txt"
+
+    # Start moving files
+    local pod=
+    for pod in *; do
+        if [ ! -d "${pod}/release" ]; then
+            continue;
+        fi
+        cd "${pod}/release"
+        local release=
+        for release in *; do
+            if [ ! -d "${release}" ]; then
+                continue
+            fi
+            cd "${release}"
+
+            PRINT "Update pod ${pod}:${release}" "info" 0
+
+            # Move sh and state files inside release dir
+            local dir="${livePods}/${pod}/release/${release}"
+            mkdir -p "${dir}"
+            local file=
+            for file in *; do
+                if [ -f "${file}" ]; then
+                    # This would be a pod or pod.state file, just move it over to the live location.
+                    mv -f "${file}" "${dir}"
+                fi
+            done
+
+            # Step inside config dir
+            if [ ! -d "config" ]; then
+                continue
+            fi
+
+            # Update the configs in the config dir
+            cd "config"
+            local config=
+            for config in *; do
+                if [ ! -d "${config}" ]; then
+                    continue
+                fi
+                # This is a config directory.
+                # First empty the current directory,
+                # then mv all files over.
+                # After emptying the dir we then remove the chk sum file
+                # which means that we won't empty the dir again on a resumed
+                # unpacking.
+                local dir="${livePods}/${pod}/release/${release}/config"
+                local chksumFile="${dir}/${config}.txt"
+                # NOTE: we could make the resume more clever by deciding on this when starting. Samll risk now is that there's a timeout on update and another update comes in and "resumes" when it should reset.
+                local isResumed="0"
+                if [ ! -f "${chksumFile}" ]; then
+                    # This means that this unpacking has been resumed and we
+                    # should not delete the target files (again).
+                    PRINT "Resuming unpacking of pod config ${pod}:${release}:${config}" "info" 0
+                    isResumed="1"
+                else
+                    PRINT "Unpacking pod config ${pod}:${release}:${config}" "info" 0
+                fi
+                if ! cd "${config}"; then
+                    return 1
+                fi
+                local dir="${livePods}/${pod}/release/${release}/config/${config}"
+                mkdir -p "${dir}"
+                if [ "${isResumed}" = "0" ]; then
+                    # Empty the live dir
+                    ( cd "${dir}" && ls -A |xargs rm -rf )
+                    rm "${chksumFile}"
+                fi
+
+                # mv new files over
+                local file2=
+                for file2 in $(ls -A); do
+                    mv -f "${file2}" "${dir}"
+                done
+                cd ..  # step out of config dir
+            done
+
+            # Move checksum files, important to do this after we have moved over config files.
+            local dir="${livePods}/${pod}/release/${release}/config"
+            local file2=
+            for file2 in *; do
+                if [ -f "${file2}" ]; then
+                    # This would be a chk sum file, move it over.
+                    mv -f "${file2}" "${dir}"
+                fi
+            done
+            cd ..  # Step out of "config" dir
+            cd .. # Step of out of release version dir
+        done
+        cd ..  # Step out of "release" dir.
+    done
+    cd ../.. # Step out of tmpDir
+    rm -rf "${tmpDir}"
+
+    PRINT "Done unpacking updates." "info" 0
 }

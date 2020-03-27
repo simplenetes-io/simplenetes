@@ -23,7 +23,7 @@ CLUSTER_SYNC()
 
 HOST_CREATE()
 {
-    SPACE_SIGNATURE="host [jumphost expose]"
+    SPACE_SIGNATURE="host [jumphost expose hostHome]"
     SPACE_DEP="_PRJ_HOST_CREATE"
 
     local host="${1}"
@@ -35,7 +35,10 @@ HOST_CREATE()
     local expose="${1:-}"
     shift $(($# > 0 ? 1 : 0))
 
-    _PRJ_HOST_CREATE "${host}" "${jumpHost}" "${expose}"
+    local hostHome="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    _PRJ_HOST_CREATE "${host}" "${jumpHost}" "${expose}" "${hostHome}"
 }
 
 HOST_INIT()
@@ -346,11 +349,12 @@ USAGE()
     import-config pod
         Import config templates from pod repo into the cluster project
 
-    create-host host [-j jumphost] [-e expose]
+    create-host host [-j jumpHost] [-e expose] [-h hostHome]
         Create a host in the cluster repo by the name 'host'.
         -j jumphost is an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
             If jumphost is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead.
         -e expose can be a comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
+        -h hostHome can be specified
 
     init-host host
         Initialize a host to be part of the cluster and configure the Daemon to manage it's pods
@@ -596,12 +600,13 @@ SNT_CMDLINE()
     elif [ "${action}" = "create-host" ]; then
         local _out_j=
         local _out_e=
+        local _out_h=
         local _out_rest=
-        if ! _GETOPTS "" "j e" 1 1 "$@"; then
-            printf "Usage: snt create-host host [-j jumphost] [-e expose]\\n" >&2
+        if ! _GETOPTS "" "j e r" 1 1 "$@"; then
+            printf "Usage: snt create-host host [-j jumpHost] [-e expose [-h hostHome]]\\n" >&2
             return 1
         fi
-        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}"
+        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}" "${_out_h}"
     elif [ "${action}" = "init-host" ]; then
         local _out_f="false"
         local _out_rest=
