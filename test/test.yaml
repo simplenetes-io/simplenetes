@@ -1,0 +1,9 @@
+@source: project.sh sync.sh remote.sh release.sh utils.sh
+
+_tests:
+    -
+        -
+            _info:
+                title: Run a full test of snt
+            _env:
+                - RUN: TEST_FULL -- "@{DIR}"
