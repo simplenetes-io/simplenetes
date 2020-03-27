@@ -1,4 +1,5 @@
 @clone: conf file string text ssh os
+@source: project.sh sync.sh remote.sh release.sh utils.sh
 
 _info:
     title: Simplenetes version 0.1
@@ -22,6 +23,12 @@ _env:
     - REMOTE_DAEMON_LOG:
     - REMOTE_CREATE_SUPERUSER:
     - REMOTE_DISABLE_ROOT:
+version:
+    _env:
+        - RUN: VERSION
+help:
+    _env:
+        - RUN: USAGE
 cluster:
     create_cluster:
         _info:
@@ -278,7 +285,7 @@ hosts:
                 values:
                     - false
                     - true
-            - RUN: PERFORM_RELEASE -- "${pod}" "${mode}" "${push}" "${force}"
+            - RUN: RELEASE -- "${pod}" "${mode}" "${push}" "${force}"
     signal:
         _info:
             title: Signal a pod's containers
@@ -315,7 +322,7 @@ hosts:
                     If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
             - quite:
                 title: Set to 'true' to only print the state column
-            - RUN: GET_POD_RELEASE_STATE -- "${pod}" "${quite}"
+            - RUN: GET_POD_RELEASE_STATES -- "${pod}" "${quite}"
     generate_ingress_config:
         _info:
             title: Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
