@@ -390,6 +390,302 @@ _SYNC_RUN2()
     printf "%s\\n" "${pid}"
 }
 
+# Given a host and a directory of updates,
+# we upload the directory as an archive,
+# then we unpack it on the host.
+_SYNC_PERFORM_UPDATES()
+{
+    SPACE_SIGNATURE="host tmpDir"
+    SPACE_DEP="_REMOTE_EXEC PRINT"
+
+    local host="${1}"
+    shift
+
+    local tmpDir="${1}"
+    shift
+
+    # Upload archive
+    local i=
+    local status=
+    local data=
+    # Try three times before failing
+    PRINT "tmpdir: ${tmpDir}" "debug"
+    for i in 1 2 3; do
+        data="$(cd "${tmpDir}" && tar czf - . |_REMOTE_EXEC "${host}" "upload_archive")"
+        status="$?"
+        if  [ "${status}" -eq 0 ] || [ "${status}" -eq 10 ]; then
+            break
+        fi
+    done
+    if [ "${status}" -ne 0 ]; then
+        # Failed
+        return 1
+    fi
+
+    # Unpack archive
+    local i=
+    local status=
+    # Try three times before failing
+    for i in 1 2 3; do
+        _REMOTE_EXEC "${host}" "unpack_archive" "${data}"
+        status="$?"
+        if [ "${status}" -eq 0 ]; then
+            return 0
+        elif [ "${status}" -eq 10 ]; then
+            return 1
+        fi
+    done
+    return 1
+}
+
+# Connect to host and set the current commit chain.
+# We expect the host to be up so we do a few retries in case it fails.
+_SYNC_SET_CHAIN()
+{
+    SPACE_SIGNATURE="host gitcommitchain"
+    SPACE_DEP="_REMOTE_EXEC PRINT"
+
+    local host="${1}"
+    shift
+
+    local gitCommitChain="${1}"
+    shift
+
+    local i=
+    local status=
+    # Try three times before failing
+    for i in 1 2 3; do
+        _REMOTE_EXEC "${host}" "set_commit_chain" "${gitCommitChain}"
+        status="$?"
+        if [ "${status}" -eq 0 ]; then
+            return 0
+        elif [ "${status}" -eq 10 ]; then
+            return 1
+        fi
+    done
+
+    # Failed
+    PRINT "Could not set chain." "error" 0
+    return 1
+}
+
+# Connect to host and set the current commit chain.
+# We expect the host to be up so we do a few retries in case it fails.
+_SYNC_ACQUIRE_LOCK()
+{
+    SPACE_SIGNATURE="host token"
+    SPACE_DEP="_REMOTE_EXEC PRINT"
+
+    local host="${1}"
+    shift
+
+    local token="${1}"
+    shift
+
+    local seconds=10
+
+    PRINT "Acquire lock using token: ${token}" "info" 0
+
+    local i=
+    local status=
+    # Try three times before failing
+    for i in 1 2 3; do
+        _REMOTE_EXEC "${host}" "acquire_lock" "${token}" "${seconds}"
+        status="$?"
+        if [ "${status}" -eq 0 ]; then
+            return 0
+        elif [ "${status}" -eq 2 ]; then
+            PRINT "Could not acquire lock. Some other sync process might be happening simultanously, aborting. Please try again in a few minutes." "error" 0
+            return 2
+        elif [ "${status}" -eq 10 ]; then
+            return 1
+        fi
+    done
+
+    # Failed
+    PRINT "Could not acquire lock." "error" 0
+    return 1
+}
+
+_SYNC_RELEASE_LOCK()
+{
+    SPACE_SIGNATURE="host token"
+    SPACE_DEP="_REMOTE_EXEC PRINT"
+
+    local host="${1}"
+    shift
+
+    local token="${1}"
+    shift
+
+    local i=
+    local status=
+    # Try three times before failing
+    for i in 1 2 3; do
+        _REMOTE_EXEC "${host}" "release_lock" "${token}"
+        status="$?"
+        if [ "${status}" -eq 0 ]; then
+            return 0
+        elif [ "${status}" -eq 2 ]; then
+            PRINT "Could not release lock, it might not be our lock." "error" 0
+            return 2
+        elif [ "${status}" -eq 10 ]; then
+            return 1
+        fi
+    done
+
+    # Failed
+    PRINT "Could not release lock." "error" 0
+    return 1
+}
+
+# Get meta data from the host.
+# returns string as "CLUSTERID CommitIDChain"
+_SYNC_GET_METADATA()
+{
+    SPACE_SIGNATURE="host"
+    SPACE_DEP="_REMOTE_EXEC PRINT"
+
+    local host="${1}"
+    shift
+
+    local i=
+    local status=
+    local data=
+    # Try three times before failing
+    for i in 1 2 3; do
+        data="$(_REMOTE_EXEC "${host}" "get_host_metadata")"
+        status="$?"
+        if [ "${status}" -eq 0 ]; then
+            printf "%s\\n" "${data}"
+            return 0
+        elif [ "${status}" -eq 10 ]; then
+            return 1
+        fi
+    done
+
+    PRINT "Could not get metadata." "error" 0
+    # Failed
+    return 1
+}
+
+_SYNC_DOWNLOAD_RELEASE_DATA()
+{
+    SPACE_SIGNATURE="host"
+    SPACE_DEP="_REMOTE_EXEC"
+
+    local host="${1}"
+    shift
+
+    local i=
+    local status=
+    local data=
+    # Try three times before failing
+    for i in 1 2 3; do
+        data="$(_REMOTE_EXEC "${host}" "pack_release_data")"
+        status="$?"
+        if [ "${status}" -eq 0 ]; then
+            printf "%s\\n" "${data}"
+            return 0
+        elif [ "${status}" -eq 10 ]; then
+            return 1
+        fi
+    done
+
+    # Failed
+    return 1
+}
+
+# This is run on the host and puts together a list of the current state of the releases of pods.
+# From the host download a list of all pods,
+# their releases, their states and their configs hashes.
+# return 0 on success
+# stdout: string of release data, space separated items
+#
+_SYNC_REMOTE_PACK_RELEASE_DATA()
+{
+    SPACE_SIGNATURE="hosthome"
+    SPACE_DEP="STRING_SUBST PRINT"
+
+    local HOSTHOME="${1}"
+    shift
+    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+
+    # Indicate we are still busy
+    touch "${HOSTHOME}/lock-token.txt"
+
+    local data=""
+
+    # Get the host list
+    local hostFile="${HOSTHOME}/cluster-hosts.txt"
+    local hosts=""
+    if [ -f "${hostFile}" ]; then
+        hosts="$(cat "${hostFile}")"
+        local newline="
+"
+        STRING_SUBST "hosts" "${newline}" ";" 1
+    fi
+    data="${data}${data:+ }:hosts:${hosts}"
+
+    local livePods="${HOSTHOME}/pods"
+
+    if ! cd "${HOSTHOME}/pods" 2>/dev/null; then
+        printf "%s\\n" "${data}"
+        return 0
+    fi
+    local pod=
+    for pod in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*'  |cut -b3-); do
+        if [ ! -d "${pod}/release" ]; then
+            continue
+        fi
+        cd "${pod}/release"
+
+        local release=
+        for release in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*'  |cut -b3-); do
+            cd "${release}"
+
+            # Get the state of the pod
+            local state=
+            if ! state="$(cat "pod.state" 2>/dev/null)"; then  # There should only be one state file present.
+                # No state file, this is treated as removed
+                cd ..  # Step out of specific release
+                continue
+            fi
+            data="${data}${data:+ }${pod}:${release}:${state}"
+
+            # Check if this pod has configs
+            if [ ! -d "config" ]; then
+                cd ..  # Step out of specific release
+                continue
+            fi
+
+            # Step into config dir and update the configs in the config dir
+            cd "config"
+
+            local dir="${livePods}/${pod}/release/${release}/config"
+            local config=
+            for config in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*' |cut -b3-); do
+                # This could be a config directory.
+                local chksumFile="${dir}/${config}.txt"
+                if [ -f "${chksumFile}" ]; then
+                    # This is the chksum file for the config, read it.
+                    local chksum="$(cat "${chksumFile}")"
+                    # Sanatize it if it is corrupt, because a space here can ruin the whole thing.
+                    STRING_SUBST "chksum" " " "" 1
+                    data="${data} ${pod}:${release}:${config}:${chksum}"
+                fi
+            done
+
+            cd ..  # Step out of "config" dir
+            cd ..  # Step out of release version dir
+        done
+        cd ../..  # Step out of "pod/release" dir
+    done
+    cd ../..  # Step out of "pods" dir
+
+    printf "%s\\n" "${data}"
+}
+
 # Look at the release data retrieved from the host and compare it to what is on disk in the cluster project.
 # Create a new archive which can be uploaded to the host for it to get in sync.
 # return 0 on success
@@ -539,7 +835,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
     if [ -d "${prefix}" ]; then
         cd "${prefix}"
         local pod=
-        for pod in *; do
+        for pod in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*' |cut -b3-); do
             if [ ! -d "${pod}/release" ]; then
                 continue
             fi
@@ -547,7 +843,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
             cd "${pod}/release"
 
             local release=
-            for release in *; do
+            for release in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*' |cut -b3-); do
                 if ! cd "${release}" 2>/dev/null; then
                     continue
                 fi
@@ -604,305 +900,6 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
     return 0
 }
 
-# Given a host and a directory of updates,
-# we upload the directory as an archive,
-# then we unpack it on the host.
-_SYNC_PERFORM_UPDATES()
-{
-    SPACE_SIGNATURE="host tmpDir"
-    SPACE_DEP="_REMOTE_EXEC PRINT"
-
-    local host="${1}"
-    shift
-
-    local tmpDir="${1}"
-    shift
-
-    # Upload archive
-    local i=
-    local status=
-    local data=
-    # Try three times before failing
-    PRINT "tmpdir: ${tmpDir}" "debug"
-    for i in 1 2 3; do
-        data="$(cd "${tmpDir}" && tar czf - . |_REMOTE_EXEC "${host}" "upload_archive")"
-        status="$?"
-        if  [ "${status}" -eq 0 ] || [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
-    if [ "${status}" -ne 0 ]; then
-        # Failed
-        return 1
-    fi
-
-    # Unpack archive
-    local i=
-    local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "unpack_archive" "${data}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
-    return 1
-}
-
-_SYNC_DOWNLOAD_RELEASE_DATA()
-{
-    SPACE_SIGNATURE="host"
-    SPACE_DEP="_REMOTE_EXEC"
-
-    local host="${1}"
-    shift
-
-    local i=
-    local status=
-    local data=
-    # Try three times before failing
-    for i in 1 2 3; do
-        data="$(_REMOTE_EXEC "${host}" "pack_release_data")"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            printf "%s\\n" "${data}"
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
-
-    # Failed
-    return 1
-}
-
-# Connect to host and set the current commit chain.
-# We expect the host to be up so we do a few retries in case it fails.
-_SYNC_SET_CHAIN()
-{
-    SPACE_SIGNATURE="host gitcommitchain"
-    SPACE_DEP="_REMOTE_EXEC PRINT"
-
-    local host="${1}"
-    shift
-
-    local gitCommitChain="${1}"
-    shift
-
-    local i=
-    local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "set_commit_chain" "${gitCommitChain}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
-
-    # Failed
-    PRINT "Could not set chain." "error" 0
-    return 1
-}
-
-# Connect to host and set the current commit chain.
-# We expect the host to be up so we do a few retries in case it fails.
-_SYNC_ACQUIRE_LOCK()
-{
-    SPACE_SIGNATURE="host token"
-    SPACE_DEP="_REMOTE_EXEC PRINT"
-
-    local host="${1}"
-    shift
-
-    local token="${1}"
-    shift
-
-    local seconds=10
-
-    PRINT "Acquire lock using token: ${token}" "info" 0
-
-    local i=
-    local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "acquire_lock" "${token}" "${seconds}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 2 ]; then
-            PRINT "Could not acquire lock. Some other sync process might be happening simultanously, aborting. Please try again in a few minutes." "error" 0
-            return 2
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
-
-    # Failed
-    PRINT "Could not acquire lock." "error" 0
-    return 1
-}
-
-_SYNC_RELEASE_LOCK()
-{
-    SPACE_SIGNATURE="host token"
-    SPACE_DEP="_REMOTE_EXEC PRINT"
-
-    local host="${1}"
-    shift
-
-    local token="${1}"
-    shift
-
-    local i=
-    local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "release_lock" "${token}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 2 ]; then
-            PRINT "Could not release lock, it might not be our lock." "error" 0
-            return 2
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
-
-    # Failed
-    PRINT "Could not release lock." "error" 0
-    return 1
-}
-
-# Get meta data from the host.
-# returns string as "CLUSTERID CommitIDChain"
-_SYNC_GET_METADATA()
-{
-    SPACE_SIGNATURE="host"
-    SPACE_DEP="_REMOTE_EXEC PRINT"
-
-    local host="${1}"
-    shift
-
-    local i=
-    local status=
-    local data=
-    # Try three times before failing
-    for i in 1 2 3; do
-        data="$(_REMOTE_EXEC "${host}" "get_host_metadata")"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            printf "%s\\n" "${data}"
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
-
-    PRINT "Could not get metadata." "error" 0
-    # Failed
-    return 1
-}
-
-# This is run on the host and puts together a list of the current state of the releases of pods.
-# From the host download a list of all pods,
-# their releases, their states and their configs hashes.
-_SYNC_REMOTE_PACK_RELEASE_DATA()
-{
-    SPACE_SIGNATURE="hosthome"
-    SPACE_DEP="STRING_SUBST PRINT"
-
-    local HOSTHOME="${1}"
-    shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
-
-    # Indicate we are still busy
-    touch "${HOSTHOME}/lock-token.txt"
-
-    local data=""
-
-    # Get the host list
-    local hostFile="${HOSTHOME}/cluster-hosts.txt"
-    local hosts=""
-    if [ -f "${hostFile}" ]; then
-        hosts="$(cat "${hostFile}")"
-        local newline="
-"
-        STRING_SUBST "hosts" "${newline}" ";" 1
-    fi
-    data="${data}${data:+ }:hosts:${hosts}"
-
-    local livePods="${HOSTHOME}/pods"
-
-    if ! cd "${HOSTHOME}/pods" 2>/dev/null; then
-        printf "%s\\n" "${data}"
-        return 0
-    fi
-    local pod=
-    for pod in *; do
-        if [ ! -d "${pod}/release" ]; then
-            continue
-        fi
-        cd "${pod}/release"
-
-        local release=
-        for release in *; do
-            if [ ! -d "${release}" ]; then
-                continue
-            fi
-            cd "${release}"
-
-            # Get the state of the pod
-            local state=
-            if ! state="$(cat "pod.state" 2>/dev/null)"; then  # There should only be one state file present.
-                # No state file, this is treated as removed
-                cd ..  # Step out of specific release
-                continue
-            fi
-            data="${data}${data:+ }${pod}:${release}:${state}"
-
-            # Check if this pod has configs
-            if [ ! -d "config" ]; then
-                cd ..  # Step out of specific release
-                continue
-            fi
-
-            # Step into config dir and update the configs in the config dir
-            cd "config"
-
-            local dir="${livePods}/${pod}/release/${release}/config"
-            local config=
-            for config in *; do
-                if [ ! -d "${config}" ]; then
-                    continue
-                fi
-                # This could be a config directory.
-                local chksumFile="${dir}/${config}.txt"
-                if [ -f "${chksumFile}" ]; then
-                    # This is the chksum file for the config, read it.
-                    local chksum="$(cat "${chksumFile}")"
-                    # Sanatize it if it is corrupt, because a space here can ruin the whole thing.
-                    STRING_SUBST "chksum" " " "" 1
-                    data="${data} ${pod}:${release}:${config}:${chksum}"
-                fi
-            done
-
-            cd ..  # Step out of "config" dir
-            cd ..  # Step out of release version dir
-        done
-        cd ../..  # Step out of "pod/release" dir
-    done
-    cd ../..  # Step out of "pods" dir
-
-    printf "%s\\n" "${data}"
-}
-
 # After sending a tar.gz file to the server we run this
 # function on the server to unpack that file.
 # It unpacks the file into a tmp directory.
@@ -937,10 +934,27 @@ _SYNC_REMOTE_UNPACK_ARCHIVE()
     fi
     rm "${archive}"
 
-    if ! cd "${tmpDir}"; then
+    if [ ! -d "${tmpDir}" ]; then
         PRINT "Could not unpack archive as expected." "error" 0
         return 1
     fi
+
+    _SYNC_REMOTE_UNPACK_ARCHIVE2 "${HOSTHOME}" "${tmpDir}"
+    rm -rf "${tmpDir}"
+}
+
+_SYNC_REMOTE_UNPACK_ARCHIVE2()
+{
+    SPACE_SIGNATURE="hosthome archiveDir"
+    SPACE_DEP="PRINT"
+
+    local HOSTHOME="${1}"
+    shift
+
+    local archiveDir="${1}"
+    shift
+
+    cd "${archiveDir}"
 
     # Check the cluster-hosts.txt file
     if [ -f "cluster-hosts.txt" ]; then
@@ -950,7 +964,6 @@ _SYNC_REMOTE_UNPACK_ARCHIVE()
 
     if [ ! -d "pods" ]; then
         # No pods to update
-        rm -rf "${tmpDir}"
         PRINT "No pods to update, done unpacking updates." "info" 0
         return 0
     fi
@@ -964,16 +977,13 @@ _SYNC_REMOTE_UNPACK_ARCHIVE()
 
     # Start moving files
     local pod=
-    for pod in *; do
+    for pod in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*' |cut -b3-); do
         if [ ! -d "${pod}/release" ]; then
             continue;
         fi
         cd "${pod}/release"
         local release=
-        for release in *; do
-            if [ ! -d "${release}" ]; then
-                continue
-            fi
+        for release in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*' |cut -b3-); do
             cd "${release}"
 
             PRINT "Update pod ${pod}:${release}" "info" 0
@@ -982,28 +992,24 @@ _SYNC_REMOTE_UNPACK_ARCHIVE()
             local dir="${livePods}/${pod}/release/${release}"
             mkdir -p "${dir}"
             local file=
-            for file in *; do
-                if [ -f "${file}" ]; then
-                    # This would be a pod or pod.state file, just move it over to the live location.
-                    mv -f "${file}" "${dir}"
-                fi
+            for file in $(find . -mindepth 1 -maxdepth 1 -type f -not -path './.*' |cut -b3-); do
+                # This would be a pod, pod.state, ingress, etc file, just move it over to the live location.
+                mv -f "${file}" "${dir}"
             done
 
             # Step inside config dir
             if [ ! -d "config" ]; then
+                cd ..  # Step out of "release" dir.
                 continue
             fi
 
             # Update the configs in the config dir
             cd "config"
             local config=
-            for config in *; do
-                if [ ! -d "${config}" ]; then
-                    continue
-                fi
+            for config in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*' |cut -b3-); do
                 # This is a config directory.
-                # First empty the current directory,
-                # then mv all files over.
+                # First empty the current directory on the host,
+                # then mv all files over from here.
                 # After emptying the dir we then remove the chk sum file
                 # which means that we won't empty the dir again on a resumed
                 # unpacking.
@@ -1032,7 +1038,7 @@ _SYNC_REMOTE_UNPACK_ARCHIVE()
 
                 # mv new files over
                 local file2=
-                for file2 in $(ls -A); do
+                for file2 in $(find . -mindepth 1 -maxdepth 1 -not -path './.*' |cut -b3-); do
                     mv -f "${file2}" "${dir}"
                 done
                 cd ..  # step out of config dir
@@ -1041,19 +1047,16 @@ _SYNC_REMOTE_UNPACK_ARCHIVE()
             # Move checksum files, important to do this after we have moved over config files.
             local dir="${livePods}/${pod}/release/${release}/config"
             local file2=
-            for file2 in *; do
-                if [ -f "${file2}" ]; then
-                    # This would be a chk sum file, move it over.
-                    mv -f "${file2}" "${dir}"
-                fi
+            for file2 in $(find . -mindepth 1 -maxdepth 1 -type f -not -path './.*' |cut -b3-); do
+                # This would be a chk sum file, move it over.
+                mv -f "${file2}" "${dir}"
             done
             cd ..  # Step out of "config" dir
             cd .. # Step of out of release version dir
         done
         cd ..  # Step out of "release" dir.
     done
-    cd ../.. # Step out of tmpDir
-    rm -rf "${tmpDir}"
+    cd ../.. # Step out of archiveDir
 
     PRINT "Done unpacking updates." "info" 0
 }

@@ -2066,7 +2066,7 @@ _PRJ_COPY_POD_CONFIGS()
     fi
 
     if ! ( cd "${clusterPath}/_config/${pod}"
-        for config in *; do
+        for config in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*'  |cut -b3-); do
             if [ ! -d "${config}" ] || [ "${config#_}" != "${config}" ]; then
                 # Not dir or underscore prefixed config, skip it.
                 continue
@@ -2109,11 +2109,7 @@ _PRJ_CHKSUM_POD_CONFIGS()
     fi
 
     if ! ( cd "${clusterPath}/${host}/pods/${pod}/release/${podVersion}/config/"
-        for config in *; do
-            if [ ! -d "${config}" ]; then
-                # Not dir, skip it.
-                continue
-            fi
+        for config in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*'  |cut -b3-); do
             # Create checksum
             local dir="${clusterPath}/${host}/pods/${pod}/release/${podVersion}/config/${config}"
             local chksum=

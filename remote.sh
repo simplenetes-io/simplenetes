@@ -566,7 +566,7 @@ _REMOTE_PACK_RELEASE_DATA()
 }
 
 # This is run on the host.
-# It retrieves a tar.gz file.
+# It retrieves a tar.gz file on stdin.
 _REMOTE_UPLOAD_ARCHIVE()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
