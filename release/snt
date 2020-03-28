@@ -71,17 +71,14 @@ _SYNC_REMOTE_PACK_RELEASE_DATA()
         return 0
     fi
     local pod=
-    for pod in *; do
+    for pod in \$(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*'  |cut -b3-); do
         if [ ! -d \"\${pod}/release\" ]; then
             continue
         fi
         cd \"\${pod}/release\"
 
         local release=
-        for release in *; do
-            if [ ! -d \"\${release}\" ]; then
-                continue
-            fi
+        for release in \$(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*'  |cut -b3-); do
             cd \"\${release}\"
 
             # Get the state of the pod
@@ -104,10 +101,7 @@ _SYNC_REMOTE_PACK_RELEASE_DATA()
 
             local dir=\"\${livePods}/\${pod}/release/\${release}/config\"
             local config=
-            for config in *; do
-                if [ ! -d \"\${config}\" ]; then
-                    continue
-                fi
+            for config in \$(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*' |cut -b3-); do
                 # This could be a config directory.
                 local chksumFile=\"\${dir}/\${config}.txt\"
                 if [ -f \"\${chksumFile}\" ]; then
@@ -970,125 +964,13 @@ _SYNC_REMOTE_UNPACK_ARCHIVE()
     fi
     rm \"\${archive}\"
 
-    if ! cd \"\${tmpDir}\"; then
+    if [ ! -d \"\${tmpDir}\" ]; then
         PRINT \"Could not unpack archive as expected.\" \"error\" 0
         return 1
     fi
 
-    # Check the cluster-hosts.txt file
-    if [ -f \"cluster-hosts.txt\" ]; then
-        PRINT \"Update cluster-hosts.txt\" \"info\" 0
-        mv -f \"cluster-hosts.txt\" \"\${HOSTHOME}\"
-    fi
-
-    if [ ! -d \"pods\" ]; then
-        # No pods to update
-        rm -rf \"\${tmpDir}\"
-        PRINT \"No pods to update, done unpacking updates.\" \"info\" 0
-        return 0
-    fi
-
-    cd \"pods\"
-
-    local livePods=\"\${HOSTHOME}/pods\"
-
-    # Indicate we are still busy
-    touch \"\${HOSTHOME}/lock-token.txt\"
-
-    # Start moving files
-    local pod=
-    for pod in *; do
-        if [ ! -d \"\${pod}/release\" ]; then
-            continue;
-        fi
-        cd \"\${pod}/release\"
-        local release=
-        for release in *; do
-            if [ ! -d \"\${release}\" ]; then
-                continue
-            fi
-            cd \"\${release}\"
-
-            PRINT \"Update pod \${pod}:\${release}\" \"info\" 0
-
-            # Move sh and state files inside release dir
-            local dir=\"\${livePods}/\${pod}/release/\${release}\"
-            mkdir -p \"\${dir}\"
-            local file=
-            for file in *; do
-                if [ -f \"\${file}\" ]; then
-                    # This would be a pod or pod.state file, just move it over to the live location.
-                    mv -f \"\${file}\" \"\${dir}\"
-                fi
-            done
-
-            # Step inside config dir
-            if [ ! -d \"config\" ]; then
-                continue
-            fi
-
-            # Update the configs in the config dir
-            cd \"config\"
-            local config=
-            for config in *; do
-                if [ ! -d \"\${config}\" ]; then
-                    continue
-                fi
-                # This is a config directory.
-                # First empty the current directory,
-                # then mv all files over.
-                # After emptying the dir we then remove the chk sum file
-                # which means that we won't empty the dir again on a resumed
-                # unpacking.
-                local dir=\"\${livePods}/\${pod}/release/\${release}/config\"
-                local chksumFile=\"\${dir}/\${config}.txt\"
-                # NOTE: we could make the resume more clever by deciding on this when starting. Samll risk now is that there's a timeout on update and another update comes in and \"resumes\" when it should reset.
-                local isResumed=\"0\"
-                if [ ! -f \"\${chksumFile}\" ]; then
-                    # This means that this unpacking has been resumed and we
-                    # should not delete the target files (again).
-                    PRINT \"Resuming unpacking of pod config \${pod}:\${release}:\${config}\" \"info\" 0
-                    isResumed=\"1\"
-                else
-                    PRINT \"Unpacking pod config \${pod}:\${release}:\${config}\" \"info\" 0
-                fi
-                if ! cd \"\${config}\"; then
-                    return 1
-                fi
-                local dir=\"\${livePods}/\${pod}/release/\${release}/config/\${config}\"
-                mkdir -p \"\${dir}\"
-                if [ \"\${isResumed}\" = \"0\" ]; then
-                    # Empty the live dir
-                    ( cd \"\${dir}\" && ls -A |xargs rm -rf )
-                    rm \"\${chksumFile}\"
-                fi
-
-                # mv new files over
-                local file2=
-                for file2 in \$(ls -A); do
-                    mv -f \"\${file2}\" \"\${dir}\"
-                done
-                cd ..  # step out of config dir
-            done
-
-            # Move checksum files, important to do this after we have moved over config files.
-            local dir=\"\${livePods}/\${pod}/release/\${release}/config\"
-            local file2=
-            for file2 in *; do
-                if [ -f \"\${file2}\" ]; then
-                    # This would be a chk sum file, move it over.
-                    mv -f \"\${file2}\" \"\${dir}\"
-                fi
-            done
-            cd ..  # Step out of \"config\" dir
-            cd .. # Step of out of release version dir
-        done
-        cd ..  # Step out of \"release\" dir.
-    done
-    cd ../.. # Step out of tmpDir
+    _SYNC_REMOTE_UNPACK_ARCHIVE2 \"\${HOSTHOME}\" \"\${tmpDir}\"
     rm -rf \"\${tmpDir}\"
-
-    PRINT \"Done unpacking updates.\" \"info\" 0
 }
 
 _UTIL_GET_TMP_DIR()
@@ -3379,10 +3261,42 @@ SNT_CMDLINE()
 {
     local _SPACE_NAME="SNT_CMDLINE"
 
+    local oldCwd="${PWD}"
+
+    # Check for cluster-id.txt, upwards and cd into that dir so that snt becomes more flexible in where users execute it from.
+    # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH=$PWD, and we allow to check upward for a cluster-id.txt
+    local dots="./"
+    if [ ! -f "cluster-id.txt" ] && [ "${CLUSTERPATH}" = "${PWD}" ]; then
+        PRINT "CLUSTERPATH not valid, searching upwards for cluster-id.txt" "debug"
+        while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
+            dots="../${dots}"
+            if [ -f "${dots}/cluster-id.txt" ]; then
+                # Found it
+                CLUSTERPATH="$(FILE_REALPATH "${dots}")"
+                PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug"
+                if [ ! -d "${PODPATH}" ]; then
+                    PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
+                    PRINT "Setting new PODPATH: ${PODPATH}" "debug"
+                fi
+                break
+            fi
+        done
+    fi
+
+    local status=
+    _SNT_CMDLINE "$@"
+    status="$?"
+
+    cd "${oldCwd}"
+    return "${status}"
+}
+
+_SNT_CMDLINE()
+{
+    local _SPACE_NAME="_SNT_CMDLINE"
+
     local action="${1:-help}"
     shift $(($# > 0 ? 1 : 0))
-
-    # TODO: check for cluster-id.txt, upwards and cd into that dir so that snt becomes more flexible in where users have their CWD atm.
 
     if [ "${action}" = "help" ]; then
         USAGE
@@ -3643,6 +3557,119 @@ SNT_CMDLINE()
     else
         PRINT "Unknown command" "error" 0
         return 1
+    fi
+}
+
+FILE_REALPATH()
+{
+    local _SPACE_NAME="FILE_REALPATH"
+
+    local file="${1}"
+
+    if [ "${file#/}" != "${file}" ]; then
+        # Already absolute
+        # Fall through for cleaning swipe
+        :
+    else
+        # Prepend the current directory.
+        file="${PWD}/${file}"
+    fi
+
+    # Remove dots and act on double dots.
+    local count=
+    local item=
+    while true; do
+        local _ifs="${IFS}"
+        local IFS="/"
+        STRING_ITEM_COUNT "${file}" "count"
+        IFS=${_ifs}
+        local index=-1
+        local keepIndexes=""
+        while [ "${index}" -lt "$((count-1))" ]; do
+            index="$((index+1))"
+            local _ifs="${IFS}"
+            IFS="/"
+            STRING_ITEM_GET "${file}" "${index}" "item"
+            IFS=${_ifs}
+            if [ -z "${item}" ]; then
+                # Discard it
+                continue
+            elif [ "${item}" = "." ]; then
+                # Discard it
+                continue
+            elif [ "${item}" = ".." ]; then
+                # Discard this one, and also the previous one
+                # Cut away last keep index
+                keepIndexes="${keepIndexes%[ ]*}"
+                continue
+            fi
+            # Keep this one. The space here is important in all cases due to how it is cut above.
+            keepIndexes="${keepIndexes} ${index}"
+        done
+        # Put together the file again
+        local file2=
+        for index in ${keepIndexes}; do
+            local _ifs="${IFS}"
+            IFS="/"
+            STRING_ITEM_GET "${file}" "${index}" "item"
+            IFS=${_ifs}
+            file2="${file2}/${item}"
+        done
+        if [ "${file}" = "${file2}" ]; then
+            # We are done
+            file="${file2}"
+            break
+        fi
+        file="${file2}"
+    done
+    file="${file:-/}"
+
+    printf "%s\\n" "${file}"
+}
+
+PRINT()
+{
+    local color=''
+    local header=''
+    [ "${3:-1}" = 1 ] && {
+        local _SPACE_NAME="${_SPACE_NAME:-anonymous}: ";
+    } || {
+        local _SPACE_NAME="";
+    }
+
+    case "${2:-info}" in
+        error)
+            if [ "${SPACE_LOG_LEVEL:-4}" -lt 1 ]; then return; fi
+            header="[ERROR] "; color="\033[31m"
+            ;;
+        security)
+            if [ "${SPACE_LOG_LEVEL:-4}" -lt 1 ]; then return; fi
+            header="[SEC]   "; color="\033[35m"
+            ;;
+        warning)
+            if [ "${SPACE_LOG_LEVEL:-4}" -lt 2 ]; then return; fi
+            header="[WARN]  "; color="\033[33m"
+            ;;
+        ok)
+            if [ "${SPACE_LOG_LEVEL:-4}" -lt 3 ]; then return; fi
+            header="[OK]    "; color="\033[32m"
+            ;;
+        info)
+            if [ "${SPACE_LOG_LEVEL:-4}" -lt 4 ]; then return; fi
+            header="[INFO]  "; color="\033[37m"
+            ;;
+        debug)
+            if [ "${SPACE_LOG_LEVEL:-4}" -lt 5 ]; then return; fi
+            header="[DEBUG] "; color=""
+            ;;
+        *)
+            return
+            ;;
+    esac
+    if [ "${SPACE_LOG_ENABLE_COLORS}" = "1" ] && [ -t 2 ]; then
+        printf "${color}%s%s%s\033[0m\n" "${header}" "${_SPACE_NAME}" "${1}" >&2
+    else
+        printf "%s%s%s\n" "${header}" "${_SPACE_NAME}" "${1}" >&2
     fi
 }
 
@@ -4027,52 +4054,6 @@ DAEMON_LOG()
     _PRJ_GET_DAEMON_LOG "$@"
 }
 
-PRINT()
-{
-    local color=''
-    local header=''
-    [ "${3:-1}" = 1 ] && {
-        local _SPACE_NAME="${_SPACE_NAME:-anonymous}: ";
-    } || {
-        local _SPACE_NAME="";
-    }
-
-    case "${2:-info}" in
-        error)
-            if [ "${SPACE_LOG_LEVEL:-4}" -lt 1 ]; then return; fi
-            header="[ERROR] "; color="\033[31m"
-            ;;
-        security)
-            if [ "${SPACE_LOG_LEVEL:-4}" -lt 1 ]; then return; fi
-            header="[SEC]   "; color="\033[35m"
-            ;;
-        warning)
-            if [ "${SPACE_LOG_LEVEL:-4}" -lt 2 ]; then return; fi
-            header="[WARN]  "; color="\033[33m"
-            ;;
-        ok)
-            if [ "${SPACE_LOG_LEVEL:-4}" -lt 3 ]; then return; fi
-            header="[OK]    "; color="\033[32m"
-            ;;
-        info)
-            if [ "${SPACE_LOG_LEVEL:-4}" -lt 4 ]; then return; fi
-            header="[INFO]  "; color="\033[37m"
-            ;;
-        debug)
-            if [ "${SPACE_LOG_LEVEL:-4}" -lt 5 ]; then return; fi
-            header="[DEBUG] "; color=""
-            ;;
-        *)
-            return
-            ;;
-    esac
-    if [ "${SPACE_LOG_ENABLE_COLORS}" = "1" ] && [ -t 2 ]; then
-        printf "${color}%s%s%s\033[0m\n" "${header}" "${_SPACE_NAME}" "${1}" >&2
-    else
-        printf "%s%s%s\n" "${header}" "${_SPACE_NAME}" "${1}" >&2
-    fi
-}
-
 _GETOPTS()
 {
     local _SPACE_NAME="_GETOPTS"
@@ -4205,6 +4186,48 @@ GET_POD_STATUS()
     local _SPACE_NAME="GET_POD_STATUS"
 
     _PRJ_GET_POD_STATUS "$@"
+}
+
+STRING_ITEM_COUNT()
+{
+    local _SPACE_NAME="STRING_ITEM_COUNT"
+
+    local __s="${1}"
+    shift
+
+    local __outvar="${1}"
+    shift
+
+    local __item=
+    local __count=0
+    for __item in ${__s}; do
+        __count=$((__count+1))
+    done
+    eval "${__outvar}=\"\${__count}\""
+}
+
+STRING_ITEM_GET()
+{
+    local _SPACE_NAME="STRING_ITEM_GET"
+
+    local __s="${1}"
+    shift
+
+    local __index="${1}"
+    shift
+
+    local __outvar="${1}"
+    shift
+
+    local __item=
+    local __count=0
+    for __item in ${__s}; do
+        if [ "${__count}" -eq "${__index}" ]; then
+            eval "${__outvar}=\"\${__item}\""
+            break
+        fi
+        __count=$((__count+1))
+    done
 }
 
 _PRJ_GET_HOST_STATE()
@@ -7263,7 +7286,7 @@ _PRJ_COPY_POD_CONFIGS()
     fi
 
     if ! ( cd "${clusterPath}/_config/${pod}"
-        for config in *; do
+        for config in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*'  |cut -b3-); do
             if [ ! -d "${config}" ] || [ "${config#_}" != "${config}" ]; then
                 # Not dir or underscore prefixed config, skip it.
                 continue
@@ -7304,11 +7327,7 @@ _PRJ_CHKSUM_POD_CONFIGS()
     fi
 
     if ! ( cd "${clusterPath}/${host}/pods/${pod}/release/${podVersion}/config/"
-        for config in *; do
-            if [ ! -d "${config}" ]; then
-                # Not dir, skip it.
-                continue
-            fi
+        for config in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*'  |cut -b3-); do
             # Create checksum
             local dir="${clusterPath}/${host}/pods/${pod}/release/${podVersion}/config/${config}"
             local chksum=
@@ -7437,73 +7456,6 @@ _PRJ_GET_FREE_HOSTPORT()
     fi
 
     printf "%s\\n" "${port}"
-}
-
-FILE_REALPATH()
-{
-    local _SPACE_NAME="FILE_REALPATH"
-
-    local file="${1}"
-
-    if [ "${file#/}" != "${file}" ]; then
-        # Already absolute
-        # Fall through for cleaning swipe
-        :
-    else
-        # Prepend the current directory.
-        file="${PWD}/${file}"
-    fi
-
-    # Remove dots and act on double dots.
-    local count=
-    local item=
-    while true; do
-        local _ifs="${IFS}"
-        local IFS="/"
-        STRING_ITEM_COUNT "${file}" "count"
-        IFS=${_ifs}
-        local index=-1
-        local keepIndexes=""
-        while [ "${index}" -lt "$((count-1))" ]; do
-            index="$((index+1))"
-            local _ifs="${IFS}"
-            IFS="/"
-            STRING_ITEM_GET "${file}" "${index}" "item"
-            IFS=${_ifs}
-            if [ -z "${item}" ]; then
-                # Discard it
-                continue
-            elif [ "${item}" = "." ]; then
-                # Discard it
-                continue
-            elif [ "${item}" = ".." ]; then
-                # Discard this one, and also the previous one
-                # Cut away last keep index
-                keepIndexes="${keepIndexes%[ ]*}"
-                continue
-            fi
-            # Keep this one. The space here is important in all cases due to how it is cut above.
-            keepIndexes="${keepIndexes} ${index}"
-        done
-        # Put together the file again
-        local file2=
-        for index in ${keepIndexes}; do
-            local _ifs="${IFS}"
-            IFS="/"
-            STRING_ITEM_GET "${file}" "${index}" "item"
-            IFS=${_ifs}
-            file2="${file2}/${item}"
-        done
-        if [ "${file}" = "${file2}" ]; then
-            # We are done
-            file="${file2}"
-            break
-        fi
-        file="${file2}"
-    done
-    file="${file:-/}"
-
-    printf "%s\\n" "${file}"
 }
 
 _PRJ_IS_POD_ATTACHED()
@@ -8585,48 +8537,6 @@ FILE_DIR_CHECKSUM_CONTENT()
     (cd "${dir}" && find . -type f -exec ${_SHASUMBIN} {} \; |sort -k2 |${_SHASUMBIN} |cut -f 1 -d' ')
 }
 
-STRING_ITEM_COUNT()
-{
-    local _SPACE_NAME="STRING_ITEM_COUNT"
-
-    local __s="${1}"
-    shift
-
-    local __outvar="${1}"
-    shift
-
-    local __item=
-    local __count=0
-    for __item in ${__s}; do
-        __count=$((__count+1))
-    done
-    eval "${__outvar}=\"\${__count}\""
-}
-
-STRING_ITEM_GET()
-{
-    local _SPACE_NAME="STRING_ITEM_GET"
-
-    local __s="${1}"
-    shift
-
-    local __index="${1}"
-    shift
-
-    local __outvar="${1}"
-    shift
-
-    local __item=
-    local __count=0
-    for __item in ${__s}; do
-        if [ "${__count}" -eq "${__index}" ]; then
-            eval "${__outvar}=\"\${__item}\""
-            break
-        fi
-        __count=$((__count+1))
-    done
-}
-
 SSH()
 {
     local _SPACE_NAME="SSH"
@@ -8961,7 +8871,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
     if [ -d "${prefix}" ]; then
         cd "${prefix}"
         local pod=
-        for pod in *; do
+        for pod in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*' |cut -b3-); do
             if [ ! -d "${pod}/release" ]; then
                 continue
             fi
@@ -8969,7 +8879,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
             cd "${pod}/release"
 
             local release=
-            for release in *; do
+            for release in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*' |cut -b3-); do
                 if ! cd "${release}" 2>/dev/null; then
                     continue
                 fi
