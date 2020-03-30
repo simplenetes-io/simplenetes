@@ -451,18 +451,14 @@ _SYNC_SET_CHAIN()
     local gitCommitChain="${1}"
     shift
 
-    local i=
     local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "set_commit_chain" "${gitCommitChain}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
+    _REMOTE_EXEC "${host}" "set_commit_chain" "${gitCommitChain}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    elif [ "${status}" -eq 10 ]; then
+        return 1
+    fi
 
     # Failed
     PRINT "Could not set chain." "error" 0
@@ -486,21 +482,17 @@ _SYNC_ACQUIRE_LOCK()
 
     PRINT "Acquire lock using token: ${token}" "info" 0
 
-    local i=
     local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "acquire_lock" "${token}" "${seconds}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 2 ]; then
-            PRINT "Could not acquire lock. Some other sync process might be happening simultanously, aborting. Please try again in a few minutes." "error" 0
-            return 2
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
+    _REMOTE_EXEC "${host}" "acquire_lock" "${token}" "${seconds}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    elif [ "${status}" -eq 2 ]; then
+        PRINT "Could not acquire lock. Some other sync process might be happening simultanously, aborting. Please try again in a few minutes." "error" 0
+        return 2
+    elif [ "${status}" -eq 10 ]; then
+        return 1
+    fi
 
     # Failed
     PRINT "Could not acquire lock." "error" 0
@@ -549,20 +541,16 @@ _SYNC_GET_METADATA()
     local host="${1}"
     shift
 
-    local i=
     local status=
     local data=
-    # Try three times before failing
-    for i in 1 2 3; do
-        data="$(_REMOTE_EXEC "${host}" "get_host_metadata")"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            printf "%s\\n" "${data}"
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
+    data="$(_REMOTE_EXEC "${host}" "get_host_metadata")"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        printf "%s\\n" "${data}"
+        return 0
+    elif [ "${status}" -eq 10 ]; then
+        return 1
+    fi
 
     PRINT "Could not get metadata." "error" 0
     # Failed
@@ -577,23 +565,20 @@ _SYNC_DOWNLOAD_RELEASE_DATA()
     local host="${1}"
     shift
 
-    local i=
     local status=
     local data=
-    # Try three times before failing
-    for i in 1 2 3; do
-        data="$(_REMOTE_EXEC "${host}" "pack_release_data")"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            printf "%s\\n" "${data}"
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
+    data="$(_REMOTE_EXEC "${host}" "pack_release_data")"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        printf "%s\\n" "${data}"
+        return 0
+    fi
+    elif [ "${status}" -eq 10 ]; then
+        return 1
+    fi
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 # This is run on the host and puts together a list of the current state of the releases of pods.

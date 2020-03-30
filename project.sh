@@ -534,23 +534,17 @@ _PRJ_GET_POD_STATUS2()
         return 1
     fi
 
-    local i=
     local status=
-    # Try two times before failing
-    for i in 1 2; do
-        _REMOTE_EXEC "${host}" "pod_status" "${pod}" "${podVersion}" "${query}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
+    _REMOTE_EXEC "${host}" "pod_status" "${pod}" "${podVersion}" "${query}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
 
     PRINT "Could not get pod status from host." "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 _PRJ_GET_DAEMON_LOG2()
@@ -567,23 +561,17 @@ _PRJ_GET_DAEMON_LOG2()
         return 1
     fi
 
-    local i=
     local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "daemon-log"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
+    _REMOTE_EXEC "${host}" "daemon-log"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
 
     PRINT "Could not get daemon log from host" "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 # Connect to the cluster and retrieve logs for a pod instance.
@@ -894,23 +882,17 @@ _PRJ_SIGNAL_POD2()
     local podVersion="${1}"
     shift
 
-    local i=
     local status=
-    # Try one times before failing
-    for i in 1; do
-        _REMOTE_EXEC "${host}" "signal" "${pod}" "${podVersion}" "$@"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
+    _REMOTE_EXEC "${host}" "signal" "${pod}" "${podVersion}" "$@"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
 
     PRINT "Could not signal pod on host." "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 # Set the pod.ingress.conf file active/inactive
@@ -1660,21 +1642,17 @@ KEYFILE=${SUPERKEYFILE}
 PORT=${PORT}
 JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 
-    local i=
     local status=
-    # Try one time before failing
-    for i in 1; do
-        cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "setup_host" "${USER}" "${EXPOSE}" "${INTERNAL}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        fi
-    done
+    cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "setup_host" "${USER}" "${EXPOSE}" "${INTERNAL}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
 
     PRINT "Could not install setup host" "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 # Looging in as root, create a new super user on the host.
@@ -1753,23 +1731,19 @@ KEYFILE=${keyfile}
 PORT=${PORT}
 JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 
-    local i=
     local status=
-    # Try one time before failing
-    for i in 1; do
-        cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "create_superuser" "${SUPERUSER}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            rm "${hostEnv2}"
-            return 0
-        fi
-    done
+    cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "create_superuser" "${SUPERUSER}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        rm "${hostEnv2}"
+        return 0
+    fi
     rm "${hostEnv2}"
 
     PRINT "Could not create super user." "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 _PRJ_HOST_DISABLE_ROOT()
@@ -1834,23 +1808,19 @@ KEYFILE=${SUPERKEYFILE}
 PORT=${PORT}
 JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 
-    local i=
     local status=
-    # Try one time before failing
-    for i in 1; do
-        _REMOTE_EXEC "${host}:${hostEnv2}" "disable_root"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            rm "${hostEnv2}"
-            return 0
-        fi
-    done
+    _REMOTE_EXEC "${host}:${hostEnv2}" "disable_root"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        rm "${hostEnv2}"
+        return 0
+    fi
     rm "${hostEnv2}"
 
     PRINT "Could not disable root." "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 _PRJ_HOST_INIT()
@@ -1877,26 +1847,20 @@ _PRJ_HOST_INIT()
         return 1
     fi
 
-    local i=
     local status=
-    # Try one time before failing
-    for i in 1; do
-        _REMOTE_EXEC "${host}" "init_host" "${clusterID}" "${force}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 2 ]; then
-            PRINT "Host already initiated with other cluster ID." "error" 0
-            return 2
-        elif [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
+    _REMOTE_EXEC "${host}" "init_host" "${clusterID}" "${force}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    elif [ "${status}" -eq 2 ]; then
+        PRINT "Host already initiated with other cluster ID." "error" 0
+        return 2
+    fi
 
     PRINT "Could not init host to cluster." "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 _PRJ_HOST_CREATE()
