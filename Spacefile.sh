@@ -1,4 +1,5 @@
 ##
+
 # Public entry point functions for command line and for direct space invocation.
 # Functions here are wrappers to other functions.
 
@@ -95,8 +96,9 @@ HOST_SETUP()
 
 CLUSTER_STATUS()
 {
-    :
-    # TODO
+    SPACE_DEP="_PRJ_GET_CLUSTER_STATUS"
+
+    _PRJ_GET_CLUSTER_STATUS
 }
 
 LIST_PODS()
@@ -325,6 +327,40 @@ RELEASE()
     _RELEASE "$@"
 }
 
+POD_SHELL()
+{
+    SPACE_SIGNATURE="podTriple [container useBash]"
+    SPACE_DEP="_PRJ_POD_SHELL"
+
+    local podTriple="${1}"
+    shift
+
+    local container="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local useBash="${1:-false}"
+    shift $(($# > 0 ? 1 : 0))
+
+    _PRJ_POD_SHELL "${podTriple}" "${container}" "${useBash}"
+}
+
+HOST_SHELL()
+{
+    SPACE_SIGNATURE="host [superuser useBash]"
+    SPACE_DEP="_PRJ_HOST_SHELL"
+
+    local host="${1}"
+    shift
+
+    local superUser="${1:-false}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local useBash="${1:-false}"
+    shift $(($# > 0 ? 1 : 0))
+
+    _PRJ_HOST_SHELL "${host}" "${superUser}" "${useBash}"
+}
+
 USAGE()
 {
     printf "%s\\n" "Usage:
@@ -429,7 +465,7 @@ USAGE()
         If host is left out then get status of the pod for all hosts which the pod is attached to.
         If version is left out the 'latest' version is searched for.
         -r option set means to only get the 'readiness' of the pod.
-        -q option set means to not output but to return 1 if not healthy.
+        -q option set means to not output but to return 1 if no pod ready. Only applicable if also -r flag used.
 
     generate-ingress [ingresspod[:version]] [-x excludeClusterPorts]
         Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
@@ -467,6 +503,20 @@ USAGE()
 
     daemon-log [host]
         Get the systemd unit daemon log
+
+    pod-shell pod[:version][@host] [-c container] [-B]
+        Step into a shell inside a container of a pod.
+        If version is left out the 'latest' version is searched for.
+        If host is left out then enter the container on each host, in sequential order.
+        -c option states the name of the container to enter.
+           If not set then the last container of the pod is entered (as defined in the pod.yaml).
+        -B set to force the use of bash as shell, otherwise uses sh.
+
+    host-shell host [-s] [-B]
+        Step into a shell inside a specific host.
+        -s option dictates if to enter as the superuser.
+        -B set to force the use of bash as shell, otherwise uses sh.
+
 " >&2
 }
 
@@ -589,7 +639,7 @@ SNT_CMDLINE()
 _SNT_CMDLINE()
 {
     SPACE_SIGNATURE="[action args]"
-    SPACE_DEP="USAGE VERSION GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS"
+    SPACE_DEP="USAGE VERSION GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS POD_SHELL HOST_SHELL"
     # It is important that CLUSTERPATH is in front of PODPATH, because PODPATH references the former.
     SPACE_ENV="CLUSTERPATH PODPATH"
 
@@ -852,6 +902,28 @@ _SNT_CMDLINE()
             return 1
         fi
         RELEASE "${_out_rest}" "${_out_m}" "${_out_p}" "${_out_f}"
+    elif [ "${action}" = "pod-shell" ]; then
+        local _out_rest=
+        local _out_c=""
+        local _out_B="false"
+
+        if ! _GETOPTS "B" "c" 1 1 "$@"; then
+            printf "Usage: snt pod-shell pod[:version][@host] [-c container] [-B]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        POD_SHELL "${1}" "${_out_s}" "${_out_B}"
+    elif [ "${action}" = "host-shell" ]; then
+        local _out_rest=
+        local _out_s="false"
+        local _out_B="false"
+
+        if ! _GETOPTS "s B" "" 1 1 "$@"; then
+            printf "Usage: snt host-shell host [-s] [-B]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        HOST_SHELL "${1}" "${_out_s}" "${_out_B}"
     else
         PRINT "Unknown command" "error" 0
         return 1

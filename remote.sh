@@ -1,12 +1,13 @@
 # All REMOTELY EXECUTED functionality
 #
 
+# host: host[:pathToHostEnvFile]
 # Return 10 on internal error which is pointless retrying.
 _REMOTE_EXEC()
 {
     SPACE_SIGNATURE="host action [args]"
     # This env variable can be baked in at compile time if we want this module to be standalone
-    SPACE_ENV="CLUSTERPATH REMOTE_PACK_RELEASEDATA=$ REMOTE_SET_COMMITCHAIN=$ REMOTE_ACQUIRE_LOCK=$ REMOTE_RELEASE_LOCK=$ REMOTE_GET_HOSTMETADATA=$ REMOTE_UPLOAD_ARCHIVE=$ REMOTE_UNPACK_ARCHIVE=$ REMOTE_INIT_HOST=$ REMOTE_HOST_SETUP=$ REMOTE_LOGS=$ REMOTE_DAEMON_LOG=$ REMOTE_CREATE_SUPERUSER=$ REMOTE_DISABLE_ROOT=$ REMOTE_SIGNAL=$ REMOTE_POD_STATUS=$"
+    SPACE_ENV="CLUSTERPATH REMOTE_PACK_RELEASEDATA=$ REMOTE_SET_COMMITCHAIN=$ REMOTE_ACQUIRE_LOCK=$ REMOTE_RELEASE_LOCK=$ REMOTE_GET_HOSTMETADATA=$ REMOTE_UPLOAD_ARCHIVE=$ REMOTE_UNPACK_ARCHIVE=$ REMOTE_INIT_HOST=$ REMOTE_HOST_SETUP=$ REMOTE_LOGS=$ REMOTE_DAEMON_LOG=$ REMOTE_CREATE_SUPERUSER=$ REMOTE_DISABLE_ROOT=$ REMOTE_SIGNAL=$ REMOTE_POD_STATUS=$ REMOTE_POD_SHELL=$ REMOTE_HOST_SHELL=$"
     SPACE_DEP="SSH PRINT STRING_TRIM"
 
     local host="${1}"
@@ -128,6 +129,16 @@ _REMOTE_EXEC()
                 RUN="${REMOTE_DISABLE_ROOT}"
             fi
             ;;
+        "pod_shell")
+            if [ -n "${REMOTE_POD_SHELL}" ]; then
+                RUN="${REMOTE_POD_SHELL}"
+            fi
+            ;;
+        "host_shell")
+            if [ -n "${REMOTE_HOST_SHELL}" ]; then
+                RUN="${REMOTE_HOST_SHELL}"
+            fi
+            ;;
         *)
             # Unknown action type
             PRINT "Unknown action type: ${action}." "error"
@@ -244,6 +255,65 @@ _REMOTE_SIGNAL()
     fi
 
     ${podFile} signal "$@"
+}
+
+_REMOTE_HOST_SHELL()
+{
+    # Arguments are actually not optional, but we do this so the exporting goes smoothly.
+    SPACE_SIGNATURE="[hosthome useBash]"
+    SPACE_DEP="STRING_SUBST"
+
+    local HOSTHOME="${1}"
+    shift
+    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+
+    local useBash="${1:-false}"
+    shift
+
+    cd "${HOSTHOME}"
+
+    if [ "${useBash}" = "true" ]; then
+        bash
+    else
+        sh
+    fi
+
+}
+
+_REMOTE_POD_SHELL()
+{
+    # Arguments are actually not optional, but we do this so the exporting goes smoothly.
+    SPACE_SIGNATURE="[hosthome pod podVersion container useBash]"
+    SPACE_DEP="STRING_SUBST PRINT"
+
+    local HOSTHOME="${1}"
+    shift
+    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local container="${1}"
+    shift
+
+    local useBash="${1:-false}"
+    shift
+
+    local podFile="${HOSTHOME}/pods/${pod}/release/${podVersion}/pod"
+
+    if [ ! -f "${podFile}" ]; then
+        PRINT "Missing pod: ${pod}:${podVersion}" "error" 0
+        return 10
+    fi
+
+    if [ "${useBash}" = "true" ]; then
+        ${podFile} "shell" "${container}" -B
+    else
+        ${podFile} "shell" "${container}"
+    fi
 }
 
 _REMOTE_POD_STATUS()

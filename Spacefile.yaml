@@ -23,6 +23,8 @@ _env:
     - REMOTE_DAEMON_LOG:
     - REMOTE_CREATE_SUPERUSER:
     - REMOTE_DISABLE_ROOT:
+    - REMOTE_POD_SHELL:
+    - REMOTE_HOST_SHELL:
 version:
     _env:
         - RUN: VERSION
@@ -417,6 +419,29 @@ hosts:
                 title: Name of the host for which to get the logs for. Default is all.
             - RUN: DAEMON_LOG -- "${host}"
 
+pod_shell:
+    _info:
+        title: Enter into a shell in a pods container
+    _env:
+        - pod:
+            title: Pod to get status for, as: pod[:version][@host]
+        - container:
+            title: The name of the container to enter. Default is the last container in the order it was defined in the pod.yaml specification.
+        - useBash:
+            title: Set to 'true' to force bash shell
+        - RUN: POD_SHELL -- "${pod}" "${container}" "${useBash}"
+
+host_shell:
+    _info:
+        title: Enter into a shell in a host
+    _env:
+        - host:
+            title: Host name to enter
+        - superUser:
+            title: If set to 'true' then enter as the superuser
+        - useBash:
+            title: Set to 'true' to force bash shell
+        - RUN: HOST_SHELL -- "${host}" "${superUser}" "${useBash}"
 
 pods:
     _info:
@@ -493,3 +518,9 @@ _remote_plumbing:
         _env:
             - SPACE_SUDO: sudo
             - RUN: _REMOTE_DAEMON_LOG -- "$@"
+    pod_shell:
+        _env:
+            - RUN: _REMOTE_POD_SHELL -- "$@"
+    host_shell:
+        _env:
+            - RUN: _REMOTE_HOST_SHELL -- "$@"

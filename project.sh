@@ -73,6 +73,47 @@ _PRJ_GET_POD_LOGS()
     done
 }
 
+_PRJ_GET_POD_LOGS2()
+{
+    SPACE_SIGNATURE="host pod podVersion timestamp limit streams"
+    SPACE_DEP="_REMOTE_EXEC PRINT _PRJ_DOES_HOST_EXIST"
+    SPACE_ENV="CLUSTERPATH"
+
+    local host="${1}"
+    shift
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local timestamp="${1}"
+    shift
+
+    local limit="${1}"
+    shift
+
+    local streams="${1}"
+    shift
+
+    if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+        PRINT "Host ${host} does not exist." "error" 0
+        return 1
+    fi
+
+    local i=
+    local status=
+    _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    else
+        PRINT "Could not get logs from host." "error" 0
+        return "${status}"
+    fi
+}
+
 # Generate config for haproxy
 _PRJ_GEN_INGRESS_CONFIG()
 {
@@ -236,6 +277,100 @@ _PRJ_GEN_INGRESS_CONFIG()
     fi
 
     rm -rf "${tmpDir}"
+}
+
+_PRJ_HOST_SHELL()
+{
+    SPACE_SIGNATURE="host superUser useBash"
+    SPACE_DEP="PRINT _PRJ_DOES_HOST_EXIST _REMOTE_EXEC"
+    SPACE_ENV="CLUSTERPATH"
+
+    local host="${1}"
+    shift
+
+    local superUser="${1}"
+    shift
+
+    local useBash="${1}"
+    shift
+
+    if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+        PRINT "Host ${host} does not exist" "error" 0
+        return 1
+    fi
+
+    if [ "${superUser}" = "true" ]; then
+        PRINT "Enter superuser shell of host ${host}" "info" 0
+        local hostEnv="${CLUSTERPATH}/${host}/host-superuser.env"
+        _REMOTE_EXEC "${host}:${hostEnv}" "host_shell" "${useBash}"
+    else
+        PRINT "Enter shell of host ${host}" "info" 0
+        _REMOTE_EXEC "${host}" "host_shell" "${useBash}"
+    fi
+
+}
+
+_PRJ_POD_SHELL()
+{
+    SPACE_SIGNATURE="podTriple container useBash"
+    SPACE_DEP="PRINT _PRJ_LIST_ATTACHEMENTS _PRJ_DOES_HOST_EXIST _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE _REMOTE_EXEC"
+    SPACE_ENV="CLUSTERPATH"
+
+    local podTriple="${1}"
+    shift
+
+    local container="${1}"
+    shift
+
+    local useBash="${1:-false}"
+    shift
+
+    local pod=
+    local version=
+    local host=
+    if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
+        return 1
+    fi
+
+    local hosts=
+    if [ -n "${host}" ]; then
+        if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+            PRINT "Host ${host} does not exist" "error" 0
+            return 1
+        fi
+
+        hosts="${host}"
+    else
+        hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
+    fi
+    unset host
+
+    if [ -z "${hosts}" ]; then
+        PRINT "Pod is not attached to any host." "warning" 0
+        return
+    fi
+
+    local podVersion=
+    local host=
+    for host in ${hosts}; do
+        if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            PRINT "Pod ${pod}:${version}@${host} does not exist" "warning" 0
+            continue
+        fi
+
+        PRINT "Enter shell of ${pod}:${podVersion}@${host}" "info" 0
+        if ! _REMOTE_EXEC "${host}" "pod_shell" "${pod}" "${podVersion}" "${container}" "${useBash}"; then
+            PRINT "Could not enter pod ${pod}:${podVersion}@${host}" "error" 0
+        fi
+    done
+}
+
+_PRJ_GET_CLUSTER_STATUS()
+{
+    # TODO: what to show here?
+    # hosts status' and all pod status'?
+    # also implement get-host-status ?
+    :
 }
 
 # Check if a specific pod version's instances are ready
@@ -413,54 +548,6 @@ _PRJ_GET_POD_STATUS2()
     done
 
     PRINT "Could not get pod status from host." "error" 0
-
-    # Failed
-    return 1
-}
-
-_PRJ_GET_POD_LOGS2()
-{
-    SPACE_SIGNATURE="host pod podVersion timestamp limit streams"
-    SPACE_DEP="_REMOTE_EXEC PRINT _PRJ_DOES_HOST_EXIST"
-    SPACE_ENV="CLUSTERPATH"
-
-    local host="${1}"
-    shift
-
-    local pod="${1}"
-    shift
-
-    local podVersion="${1}"
-    shift
-
-    local timestamp="${1}"
-    shift
-
-    local limit="${1}"
-    shift
-
-    local streams="${1}"
-    shift
-
-    if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
-        PRINT "Host ${host} does not exist." "error" 0
-        return 1
-    fi
-
-    local i=
-    local status=
-    # Try one times before failing
-    for i in 1; do
-        _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
-
-    PRINT "Could not get logs from host." "error" 0
 
     # Failed
     return 1
