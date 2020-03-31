@@ -115,10 +115,14 @@ snt import-pod-config webserver
 Now the `config` dir from the webserver pod repo will have been copied into the cluster repo as `./\_config/webserver/config`.
 These configs we now can tune and tailor to the needs of the cluster. Every time a pod is compiled the configs from the cluster will be copied to each pod release under each Host the pod is attached to.
 
-There is one last configuration we will need to make for when attaching this pod. If you look in the `pod.yaml` file in the webserver pod you can see two variables: `${HOSTPORTAUTO1}` and `${clusterPortWebserver}`.
+There is one last configuration we will need to make for when attaching this pod. If you look in the `pod.yaml` file in the webserver pod you can see two variables: `${HOSTPORTAUTO1}` and `${clusterPort}`.
 These variables are defined in the `pod.env` file alongside the `pod.yaml` file and they are used when compiling single pods which are not attached to a cluster repo. However, when using pods in a cluster we need to define those variables in the cluster-wide `cluster-vars.env` file instead. The `pod.env` file will be ignored when attaching pods to clusters.
 
-There is one special case of variables and that is those who look like `${HOSTPORTAUTOxyz}`, those we will not define in `cluster-vars.env` because Simplenetes will assign those values depending on which host ports are already taken on each Host. So we simply leave out `${HOSTPORTAUTO1}` and just add `${clusterPort}` with the pod name as prefix, as:  
+There is one special case of variables and that is those who look like `${HOSTPORTAUTOxyz}`, those we will not define in `cluster-vars.env` because Simplenetes will assign those values depending on which host ports are already taken on each Host.
+
+Note: one can also auto assign cluster ports by using `${CLUSTERPORTAUTOxyz}`, then a cluster wide unique cluster ports is assigned.
+
+So we simply leave out `${HOSTPORTAUTO1}` and just add `${clusterPort}` with the pod name as prefix, as:  
 
 From inside the `dev-cluster` dir, type:  
 ```sh
@@ -129,7 +133,8 @@ All variables for pods which get defined in the cluster wide `cluster-vars.env` 
 
 Clusterports are used to map a containers port to a cluster-wide port so that other pods in the cluster can connect to it.
 Note that the same `clusterPorts` are usually not shared between different pods, but often between different version of the same pod.  
-Cluster ports come in the range of `abc-xyz`.
+Cluster ports can be manually assigned in the range between `1024 and 65535`, however ports `30000-32767` are reserved for host ports and the snt proxy.
+Auto assigned cluster ports are assigned in the range of `61000-63999`.
 
 ### 4. Compile the pod
 From inside the `dev-cluster` dir, type:  
