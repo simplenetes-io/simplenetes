@@ -4,10 +4,11 @@ _SYNC_RUN()
 {
     SPACE_SIGNATURE="forceSync quite"
     SPACE_ENV="CLUSTERPATH"
-    SPACE_DEP="PRINT _PRJ_IS_CLUSTER_CLEAN _PRJ_GET_CLUSTER_GIT_COMMIT_CHAIN _PRJ_GET_CLUSTER_ID _SYNC_GET_METADATA _SYNC_RUN2 _SYNC_OUTPUT_INFO _SYNC_ACQUIRE_LOCK _SYNC_RELEASE_LOCK _PRJ_LOG_C _PRJ_LIST_HOSTS _SYNC_KILL_SUBPROCESSES _SYNC_MK_TMP_FILES _SYNC_RM_TMP_FILES"
+    SPACE_DEP="PRINT _PRJ_IS_CLUSTER_CLEAN _PRJ_GET_CLUSTER_GIT_COMMIT_CHAIN _PRJ_GET_CLUSTER_ID _SYNC_GET_METADATA _SYNC_RUN2 _SYNC_OUTPUT_INFO _SYNC_ACQUIRE_LOCK _SYNC_RELEASE_LOCK _PRJ_LOG_C _PRJ_LIST_HOSTS _SYNC_KILL_SUBPROCESSES _SYNC_MK_TMP_FILES _SYNC_RM_TMP_FILES _PRJ_CHECK_PORT_CLASHES"
 
     # The sync does the following:
 
+    #   1.  Check if any cluster/host ports are clashing.
     #   2.  Get the git commit chain of IDs.
     #   For each host:
     #   3.  Check so that no other sync is already in progress.
@@ -30,6 +31,10 @@ _SYNC_RUN()
 
     local quite="${1:-false}"
     shift
+
+    if ! _PRJ_CHECK_PORT_CLASHES; then
+        return 1
+    fi
 
     local hosts=
     hosts="$(_PRJ_LIST_HOSTS 1)"
@@ -572,7 +577,6 @@ _SYNC_DOWNLOAD_RELEASE_DATA()
     if [ "${status}" -eq 0 ]; then
         printf "%s\\n" "${data}"
         return 0
-    fi
     elif [ "${status}" -eq 10 ]; then
         return 1
     fi

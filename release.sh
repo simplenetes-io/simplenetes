@@ -1,11 +1,11 @@
 # POD RELEASE SPECIFIC FUNCTIONALITY
 #
 
-# Perform the release of a new pod version and removed other running version of the same pod.
+# Perform the release of a new pod version and remove other running version of the same pod.
 # A release can be done "soft" or "hard".
-# A "soft" release has many steps in order to have zero downtime, while a "hard" release is simpler and faster but could results in a glimpse of downtime.
+# A "soft" release has many steps in order to have zero downtime, while a "hard" release is simpler and faster but could results in a blip of downtime.
 # To perform a perfect "soft" release all ingress enabled clusterPorts must be configured using ${CLUSTERPORTAUTOxyz}. This is to prevent two different pod version serving traffic at the same time.
-# If that is not an issue then they can have static clusterPorts, but do avoid a site being skewed between two version during the process then the safe way is to use auto assignment of cluster ports for ingress enabled cluster ports.
+# If that is not an issue then they can have static clusterPorts, but to avoid a site being skewed between two version during the process then the safe way is to use auto assignment of cluster ports for ingress enabled cluster ports.
 _RELEASE()
 {
     SPACE_SIGNATURE="podTuple [mode push force]"
@@ -108,9 +108,17 @@ _RELEASE()
     return "${status}"
 }
 
+# 1. Set other running version to "removed".
+#    Also inactive their ingress.
+# 2. Make sure the version to be released is set to "running".
+#    Also set it's ingress to active
+# 3. Generate new ingress conf.
+# 4. Sync!
+#    This will remove the old version(s) start the new version
+#    and point the ingress to the new version, all at the same time, which will give a blip of downtime most likely.
 _RELEASE_HARD()
 {
-    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_GET_POD_RELEASE_STATE"
+    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_GET_POD_RELEASE_STATE _PRJ_SET_POD_INGRESS_STATE"
 
     local pod="${1}"
     shift
@@ -132,6 +140,10 @@ _RELEASE_HARD()
         if ! _PRJ_SET_POD_RELEASE_STATE "removed" ${otherVersions}; then
             return 1
         fi
+        # Remove the other version of the pod from the ingress configuration
+        if ! _PRJ_SET_POD_INGRESS_STATE "inactive" ${otherVersions}; then
+            return 1
+        fi
     fi
 
     local currentState="$(_PRJ_GET_POD_RELEASE_STATE "${pod}:${podVersion}" "true")"
@@ -143,6 +155,8 @@ _RELEASE_HARD()
     else
         PRINT "Pod version already in the 'running' state" "info" 0
     fi
+
+    _PRJ_SET_POD_INGRESS_STATE "active" "${pod}:${podVersion}"
 
     PRINT "********* GENERATE INGRESS *********" "info" 0
     if ! _PRJ_GEN_INGRESS_CONFIG; then
@@ -161,13 +175,6 @@ _RELEASE_HARD()
     fi
 
     PRINT "********* GENERATE INGRESS DONE *********" "info" 0
-
-    if [ "${push}" = "true" ]; then
-        if ! git push -q; then
-            PRINT "Could not push repo to remote" "error" 0
-            return 1
-        fi
-    fi
 
     PRINT "********* SYNCING *********" "info" 0
 
@@ -189,10 +196,24 @@ _RELEASE_HARD()
 
     PRINT "********* RELEASE DONE *********" "info" 0
 }
-
+# 1. Make sure the new version is set to "running", if not already so.
+#    Also make sure its ingress is active (if any).
+# 2. Sync. So that the new version can get up and running.
+#    If the new version has the same (static) cluster ports as other currently running versions then it will immediately start receiving traffic.
+#    If it is using AUTO cluster ports then the port(s) will be unique and not receiving any traffic until the ingress has been updated.
+# 3. Wait for the new release to run
+#    If failed then reset its state back to what it was and sync again).
+# 4. Remove all other versions from the ingress.
+# 5. Generate the ingress.
+# 6. Sync
+#    If the new release has a unique clusterport then it will now start receiving traffic and the other version will stop receiving traffic.
+#    If they share cluster ports then they will all still receive traffic.
+# 7. Set all other version to state "removed".
+# 8. Sync
+# # TODO: implent the above.
 _RELEASE_SOFT()
 {
-    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_SET_POD_INGRESS_STATE _PRJ_GET_POD_STATUS _PRJ_GET_POD_RELEASE_STATE"
+    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_SET_POD_INGRESS_STATE _PRJ_GET_POD_STATUS _PRJ_GET_POD_RELEASE_STATE _PRJ_IS_CLUSTER_CLEAN"
 
     local pod="${1}"
     shift
@@ -223,22 +244,19 @@ _RELEASE_SOFT()
         PRINT "Pod version already in the 'running' state" "info" 0
     fi
 
-    # Only commit if any changes were made
-    if [ "${podStateUpdated}" = "true" ] || [ "${isCompiled}" = "true" ]; then
+    # Make sure the pods ingress is active
+    _PRJ_SET_POD_INGRESS_STATE "active" "${pod}:${podVersion}"
+
+    # Only commit if any changes were made.
+    # Don't push changes here, because we might want to rollback.
+    if ! _PRJ_IS_CLUSTER_CLEAN; then
         if ! { git add . && git commit -q -m "Soft release ${pod}:${podVersion}"; } then
             return 1
-        fi
-
-        if [ "${push}" = "true" ]; then
-            if ! git push -q; then
-                PRINT "Could not push repo to remote" "error" 0
-                return 1
-            fi
         fi
     fi
 
     PRINT "********* SYNCING *********" "info" 0
-    # If force is set, only force on the first sync, the coming syncs should be in line
+    # If force is set, only force on the first sync, the coming syncs will then be in line
     if ! _SYNC_RUN "${force}" "true"; then
         return 1
     fi
@@ -257,25 +275,20 @@ _RELEASE_SOFT()
 
         now="$(date +%s)"
         if [ "$((now > timeout))" -eq 0 ]; then
-            PRINT "Timeout trying to get pod readiness, aborting now. This could be due to a problem with the pod it self or due to network issues" "error" 0
-            if [ "${podStateUpdated}" = "true" ] || [ "${isCompiled}" = "true" ]; then
-                PRINT "Setting version ${podVersion} as 'removed' and syncing again" "info" 0
-                _PRJ_SET_POD_RELEASE_STATE "removed" "${pod}:${podVersion}"
-                git add . && git commit -q -m "New release ${pod}:${podVersion} failed to run. Set state to 'removed' and sync"
-                if [ "${push}" = "true" ]; then
-                    if ! git push -q; then
-                        PRINT "Could not push repo to remote" "error" 0
-                        return 1
-                    fi
-                fi
-                _SYNC_RUN "" "true"
-                return 1
-            fi
+            PRINT "Timeout trying to get pod readiness, aborting now. This could be due to a problem with the pod it self or due to network issues. The cluster might now be in a skewed state. Consider mannually removing ${pod}:${podVersion} if it was released." "error" 0
+            return 1
         fi
     done
 
     PRINT "New release is now running" "info" 0
-    PRINT "Update the ingress" "info" 0
+    PRINT "Remove other versions from ingress and update the ingress" "info" 0
+
+    if [ -n "${otherVersions}" ]; then
+        # Remove the other version of the pod from the ingress configuration
+        if ! _PRJ_SET_POD_INGRESS_STATE "inactive" ${otherVersions}; then
+            return 1
+        fi
+    fi
 
     # New release is up and running, regenerate the ingress
     # Note that if the new version uses the same clusterPorts as the previous version then
@@ -294,20 +307,13 @@ _RELEASE_SOFT()
     fi
 
     # Even if no ingress conf was changed, there will by new logfiles, so this commit should not fail.
-    if ! { git add . && git commit -q -m "Update ingress for ${pod}:${podVersion}"; } then
+    if ! { git add . && git commit -q -m "Remove other running versions from ingress: ${otherVersions}. Update ingress for ${pod}:${podVersion}"; } then
         PRINT "Could not commit changes" "error" 0
         return 1
     fi
 
     # TODO: how to know if ingress got updated
     if true; then
-        if [ "${push}" = "true" ]; then
-            if ! git push -q; then
-                PRINT "Could not push repo to remote" "error" 0
-                return 1
-            fi
-        fi
-
         PRINT "********* SYNCING *********" "info" 0
         if ! _SYNC_RUN "" "true"; then
             return 1
@@ -319,26 +325,6 @@ _RELEASE_SOFT()
     fi
 
     if [ -n "${otherVersions}" ]; then
-        # Remove the other version of the pod from the ingress configuration
-        if ! _PRJ_SET_POD_INGRESS_STATE "inactive" ${otherVersions}; then
-            return 1
-        fi
-        git add . && git commit -m "Remove other running versions from ingress: ${otherVersions}"
-        if [ "${push}" = "true" ]; then
-            if ! git push -q; then
-                PRINT "Could not push repo to remote" "error" 0
-                return 1
-            fi
-        fi
-        PRINT "********* SYNCING *********" "info" 0
-        if ! _SYNC_RUN "" "true"; then
-            return 1
-        fi
-
-        # Wait so that ingress get's updated
-        PRINT "Waiting for ingress to get updated..." "info" 0
-        sleep 20
-
         # Remove the other pod versions
         if ! _PRJ_SET_POD_RELEASE_STATE "removed" ${otherVersions}; then
             return 1

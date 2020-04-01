@@ -443,6 +443,20 @@ host_shell:
             title: Set to 'true' to force bash shell
         - RUN: HOST_SHELL -- "${host}" "${superUser}" "${useBash}"
 
+delete_pod:
+    _info:
+        title: Delete a pod release from the project
+        desc: |
+            The reason to delete an already removed pod is to free up the ports it has allocated.
+            Only pods in the "removed" state can be deleted.
+            A deleted pod release is renamed to ".releaseVersion.<unixTS>"
+    _env:
+        - pod:
+            title: The name (and version) of the pod, as pod[:version][@host]
+            desc: |
+                If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+        - RUN: DELETE_POD -- "${pod}"
+
 pods:
     _info:
         title: List all known pods in the PODPATH

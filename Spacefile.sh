@@ -233,6 +233,14 @@ SIGNAL_POD()
     _PRJ_SIGNAL_POD "${podTriple}" "$@"
 }
 
+DELETE_POD()
+{
+    SPACE_SIGNATURE="podTriples"
+    SPACE_DEP="_PRJ_DELETE_POD"
+
+    _PRJ_DELETE_POD "$@"
+}
+
 # Set the pod.version.state file
 SET_POD_RELEASE_STATE()
 {
@@ -492,6 +500,11 @@ USAGE()
         Signal a pod on a specific host or on all attached hosts.
         Optionally specify which containers to signal, defualt is all containers in the pod.
 
+    delete pod[:version][@host]
+        Delete pod releases which are in the \"removed\" state.
+        If version is left out the 'latest' version is searched for.
+        If host is left out then delete pod release version for all attached hosts.
+
     release pod[:version] [-p] [-m soft|hard] [-f]
         Perform the compilation and release of a new pod version.
         This operation expects there to be an Ingress Pod names 'ingress'.
@@ -639,7 +652,7 @@ SNT_CMDLINE()
 _SNT_CMDLINE()
 {
     SPACE_SIGNATURE="[action args]"
-    SPACE_DEP="USAGE VERSION GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS POD_SHELL HOST_SHELL"
+    SPACE_DEP="USAGE VERSION GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE DELETE_POD UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS POD_SHELL HOST_SHELL"
     # It is important that CLUSTERPATH is in front of PODPATH, because PODPATH references the former.
     SPACE_ENV="CLUSTERPATH PODPATH"
 
@@ -848,6 +861,15 @@ _SNT_CMDLINE()
         fi
         set -- ${_out_rest}
         SIGNAL_POD "$@"
+    elif [ "${action}" = "delete" ]; then
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 999 "$@"; then
+            printf "Usage: snt delete pod[:version][@host]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        DELETE_POD "$@"
     elif [ "${action}" = "logs" ]; then
         local _out_rest=
         local _out_t="0"

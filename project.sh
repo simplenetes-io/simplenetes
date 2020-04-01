@@ -751,6 +751,73 @@ _PRJ_LS_POD_RELEASE_STATE()
     done |sort
 }
 
+# Delete a pod release which is in the "removed" state.
+_PRJ_DELETE_POD()
+{
+    SPACE_SIGNATURE="podTriples"
+    SPACE_DEP="_PRJ_LIST_ATTACHEMENTS PRINT _PRJ_LOG_P _PRJ_DOES_HOST_EXIST _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE"
+    SPACE_ENV="CLUSTERPATH"
+
+    local podTriple=
+    for podTriple in "$@"; do
+        local pod=
+        local version=
+        local host=
+        if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
+            return 1
+        fi
+
+        local hosts=
+        if [ -n "${host}" ]; then
+            if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+                PRINT "Host ${host} does not exist." "error" 0
+                return 1
+            fi
+
+            hosts="${host}"
+        else
+            hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
+        fi
+        unset host
+
+        if [ -z "${hosts}" ]; then
+            PRINT "Pod '${pod}' is not attached to any host." "warning" 0
+            continue
+        fi
+
+        local podVersion=
+        local host=
+        for host in ${hosts}; do
+            if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+                PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
+                continue
+            fi
+
+            local stateFile="pod.state"
+            local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
+            local targetPodDir2="${CLUSTERPATH}/${host}/pods/${pod}/release/.${podVersion}.$(date +%s)"
+            local targetPodStateFile="${targetPodDir}/${stateFile}"
+
+            if [ ! -f "${targetPodStateFile}" ]; then
+                PRINT "Pod ${pod}:${podVersion} not found on host ${host}. Skipping." "warning" 0
+                continue
+            fi
+
+            local state="$(cat "${targetPodStateFile}")"
+            if [ "${state}" != "removed" ]; then
+                PRINT "Pod ${pod}:${podVersion} on host ${host} is not in the 'removed' state. Skipping." "warning" 0
+                continue
+            fi
+
+            mv "${targetPodDir}" "${targetPodDir2}"
+
+            PRINT "Delete release ${podVersion} on host ${host}" "info" 0
+
+            _PRJ_LOG_P "${host}" "${pod}" "DELETE_RELEASE ${podVersion}"
+        done
+    done
+}
+
 
 # Set the pod.version.state file
 _PRJ_SET_POD_RELEASE_STATE()
@@ -1059,7 +1126,7 @@ _PRJ_UPDATE_POD_CONFIG()
 _PRJ_COMPILE_POD()
 {
     SPACE_SIGNATURE="podTuple [verbose expectedPodVersion]"
-    SPACE_DEP="PRINT _PRJ_LIST_ATTACHEMENTS _PRJ_LOG_P _UTIL_GET_TAG_FILE _PRJ_DOES_HOST_EXIST STRING_SUBST STRING_TRIM _UTIL_GET_TAG_DIR STRING_ESCAPE _PRJ_GET_FREE_HOSTPORT TEXT_FILTER TEXT_VARIABLE_SUBST TEXT_EXTRACT_VARIABLES _PRJ_COPY_POD_CONFIGS _PRJ_CHKSUM_POD_CONFIGS FILE_REALPATH _PRJ_LIST_ATTACHEMENTS STRING_ITEM_INDEXOF STRING_IS_ALL _PRJ_SPLIT_POD_TRIPLE"
+    SPACE_DEP="PRINT _PRJ_LIST_ATTACHEMENTS _PRJ_LOG_P _UTIL_GET_TAG_FILE _PRJ_DOES_HOST_EXIST STRING_SUBST STRING_TRIM _UTIL_GET_TAG_DIR STRING_ESCAPE _PRJ_GET_FREE_HOSTPORT TEXT_FILTER TEXT_VARIABLE_SUBST TEXT_EXTRACT_VARIABLES _PRJ_COPY_POD_CONFIGS _PRJ_CHKSUM_POD_CONFIGS FILE_REALPATH _PRJ_LIST_ATTACHEMENTS STRING_ITEM_INDEXOF STRING_IS_ALL _PRJ_SPLIT_POD_TRIPLE _PRJ_GET_FREE_CLUSTERPORT"
     SPACE_ENV="CLUSTERPATH PODPATH"
 
     local podTuple="${1}"
@@ -1164,7 +1231,8 @@ _PRJ_COMPILE_POD()
         local variablesAll=""       # For show, all variables read from cluster-vars.env
         local variablesToSubst2=""  # Use this to save variable names for the second sweep of substitutions.
         local values=""             # Values to substitute in first sweep
-        local newPorts=""           # To keep track of already assigned ports
+        local newHostPorts=""       # To keep track of already assigned host ports
+        local newClusterPorts=""   # To keep track of already assigned cluster ports
         local varname=
         for varname in ${variablesToSubst}; do
             # Do sanity check on the variable name extracted.
@@ -1177,12 +1245,23 @@ _PRJ_COMPILE_POD()
                 # This is an auto host port assignment,
                 # we need to find a free port and assign the variable.
                 local newport=
-                if ! newport="$(_PRJ_GET_FREE_HOSTPORT "${host}" "${newPorts}")"; then
-                    PRINT "Could not acquire a free port on the host ${host}." "error" 0
+                if ! newport="$(_PRJ_GET_FREE_HOSTPORT "${host}" "${newHostPorts}")"; then
+                    PRINT "Could not acquire a free host port on the host ${host}." "error" 0
                     status=1
                     break 2
                 fi
-                newPorts="${newPorts} ${newport}"
+                newHostPorts="${newHostPorts} ${newport}"
+                values="${values}${values:+${newline}}${varname}=${newport}"
+            elif [ "${varname#CLUSTERPORTAUTO}" != "${varname}" ]; then
+                # This is an auto cluster port assignment,
+                # we need to find a free port and assign the variable.
+                local newport=
+                if ! newport="$(_PRJ_GET_FREE_CLUSTERPORT "${newHostPorts}")"; then
+                    PRINT "Could not acquire a free cluster port." "error" 0
+                    status=1
+                    break 2
+                fi
+                newHostPorts="${newHostPorts} ${newport}"
                 values="${values}${values:+${newline}}${varname}=${newport}"
             else
                 # This is user defined variable, check if it is global or pod specific.
@@ -1202,9 +1281,14 @@ _PRJ_COMPILE_POD()
             fi
         done
 
-        if [ -n "${newPorts}" ]; then
-            PRINT "Host ports auto generated:${newPorts}" "info" 0
+        if [ -n "${newClusterPorts}" ]; then
+            PRINT "Cluster ports auto generated:${newClusterPorts}" "info" 0
         fi
+
+        if [ -n "${newClusterPorts}" ]; then
+            PRINT "Host ports auto generated:${newClusterPorts}" "info" 0
+        fi
+
         PRINT "Variable names extracted from pod.yaml and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
         # Check so that all variables are defined in cluster-vars.env, if not issue a warning.
         local varname=
@@ -1466,11 +1550,13 @@ _PRJ_ATTACH_POD()
     local varname=
     for varname in ${variablesToSubst}; do
         if STRING_IS_ALL "${varname}" "A-Z0-9_"; then
-            # Don't show HOSTPORTAUTOxyz variable names
-            if [ "${varname#HOSTPORTAUTO}" = "${varname}" ]; then
+            # ALL CAPS global variables
+            # Don't show {HOST,CLUSTER}PORTAUTOxyz variable names
+            if [ "${varname#HOSTPORTAUTO}" = "${varname}" ] && [ "${varname#CLUSTERPORTAUTO}" = "${varname}" ]; then
                 PRINT "Variable ${varname} should be defined in cluster-vars.yaml" "info" 0
             fi
         else
+            # Prefixed variable names.
             PRINT "Variable ${pod}_${varname} should be defined in cluster-vars.yaml" "info" 0
         fi
     done
@@ -2015,8 +2101,6 @@ _PRJ_GET_CLUSTER_GIT_COMMIT_CHAIN()
 }
 
 # Check so that the cluster git project is clean without anything uncommited.
-# NOTE: we might want to check so repo is in sync with remote also.
-# something like: local txt=$(git log origin/master..HEAD)
 _PRJ_IS_CLUSTER_CLEAN()
 {
     SPACE_ENV="CLUSTERPATH"
@@ -2047,6 +2131,80 @@ _PRJ_IS_CLUSTER_CLEAN()
     return 0
 }
 
+# Go through all pods on all hosts to see if any hostports/clusterports are interfering with each other.
+_PRJ_CHECK_PORT_CLASHES()
+{
+    SPACE_DEP="_PRJ_LIST_HOSTS "
+    SPACE_ENV="CLUSTERPATH"
+
+    local err=0
+    local host=
+    hosts="$(_PRJ_LIST_HOSTS 0)"
+    for host in ${hosts}; do
+        # Get all cluster ports on host
+        local dir="${CLUSTERPATH}/${host}/pods"
+        # Extract clusterPorts from the proxy config lines.
+        local clusterPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
+        # Extract hostPorts from the proxy config lines.
+        local hostPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
+
+        local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
+
+        # Check if there are any duplicate host ports in usage on the host.
+        if [ -n "${duplicateHostPorts}" ]; then
+            PRINT "Duplicate usage of host ports detected on host ${host}: ${duplicateHostPorts}" "error" 0
+            err=1
+        fi
+
+        # Check if any hostport is interfering with any clusterport
+        local clashingPorts="$( { printf "%s\\n" "${hostPorts}" |uniq; printf "%s\\n" "${clusterPorts}" |uniq; } |sort |uniq -d)"
+        if [ -n "${clashingPorts}" ]; then
+            PRINT "Clashing of cluster and host ports detected on host ${host}: ${clashingPorts}" "error" 0
+            err=1
+        fi
+    done
+
+    return "${err}"
+}
+
+# Find first unused cluster ports on all hosts, between 61000 to 63999.
+_PRJ_GET_FREE_CLUSTERPORT()
+{
+    SPACE_SIGNATURE="reservedPorts:0"
+    SPACE_ENV="CLUSTERPATH"
+    SPACE_DEP="PRINT"
+
+    local reservedPorts="${1}"
+
+    # Extract clusterPorts from the proxy config lines from all pods on all hosts.
+    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1)"
+
+    local port=60999
+    local p=
+    while true; do
+        port=$((port+1))
+        for p in ${usedPorts}; do
+            if [ "${p}" -eq "${port}" ]; then
+                continue 2
+            fi
+        done
+        for p in ${reservedPorts}; do
+            if [ "${p}" -eq "${port}" ]; then
+                continue 2
+            fi
+        done
+        break
+    done
+
+    if [ "${port}" -gt "63999" ]; then
+        PRINT "All cluster ports between 61000-63999 are already claimed on cluster. You need to purge some old versions of pods to free up claims on cluster ports." "error" 0
+        return 1
+    fi
+
+    printf "%s\\n" "${port}"
+}
+
+# Find first unused host ports on a specific host, between 30000 to 31999.
 _PRJ_GET_FREE_HOSTPORT()
 {
     SPACE_SIGNATURE="host reservedPorts:0"
@@ -2061,9 +2219,7 @@ _PRJ_GET_FREE_HOSTPORT()
     local dir="${CLUSTERPATH}/${host}/pods"
 
     # Extract hostPorts from the proxy config lines.
-    local pod_hostports="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2)"
-    local usedPorts="${pod_hostports#*[\"]}"
-    usedPorts="${usedPorts%[\"]*}"
+    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2)"
 
     local port=29999
     local p=
@@ -2082,8 +2238,8 @@ _PRJ_GET_FREE_HOSTPORT()
         break
     done
 
-    if [ "${port}" -gt 32000 ]; then
-        PRINT "All ports between 30000-32000 are already claimed on host ${host}." "error" 0
+    if [ "${port}" -gt "31999" ]; then
+        PRINT "All ports between 30000-31999 are already claimed on host ${host}. You need to purge some old versions of pods to free up claims on host ports." "error" 0
         return 1
     fi
 

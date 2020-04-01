@@ -3252,6 +3252,8 @@ main()
 }
 
 main \"\$@\""
+REMOTE_POD_SHELL=""
+REMOTE_HOST_SHELL=""
 SPACE_LOG_LEVEL="${SPACE_LOG_LEVEL:-4}"
 SPACE_LOG_ENABLE_COLORS="${SPACE_LOG_ENABLE_COLORS:-1}"
 SPACE_ASSERT_EXIT="${SPACE_ASSERT_EXIT:-0}"
@@ -3500,6 +3502,15 @@ _SNT_CMDLINE()
         fi
         set -- ${_out_rest}
         SIGNAL_POD "$@"
+    elif [ "${action}" = "delete" ]; then
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 999 "$@"; then
+            printf "Usage: snt delete pod[:version][@host]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        DELETE_POD "$@"
     elif [ "${action}" = "logs" ]; then
         local _out_rest=
         local _out_t="0"
@@ -3554,6 +3565,28 @@ _SNT_CMDLINE()
             return 1
         fi
         RELEASE "${_out_rest}" "${_out_m}" "${_out_p}" "${_out_f}"
+    elif [ "${action}" = "pod-shell" ]; then
+        local _out_rest=
+        local _out_c=""
+        local _out_B="false"
+
+        if ! _GETOPTS "B" "c" 1 1 "$@"; then
+            printf "Usage: snt pod-shell pod[:version][@host] [-c container] [-B]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        POD_SHELL "${1}" "${_out_s}" "${_out_B}"
+    elif [ "${action}" = "host-shell" ]; then
+        local _out_rest=
+        local _out_s="false"
+        local _out_B="false"
+
+        if ! _GETOPTS "s B" "" 1 1 "$@"; then
+            printf "Usage: snt host-shell host [-s] [-B]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        HOST_SHELL "${1}" "${_out_s}" "${_out_B}"
     else
         PRINT "Unknown command" "error" 0
         return 1
@@ -3778,7 +3811,7 @@ USAGE()
         If host is left out then get status of the pod for all hosts which the pod is attached to.
         If version is left out the 'latest' version is searched for.
         -r option set means to only get the 'readiness' of the pod.
-        -q option set means to not output but to return 1 if not healthy.
+        -q option set means to not output but to return 1 if no pod ready. Only applicable if also -r flag used.
 
     generate-ingress [ingresspod[:version]] [-x excludeClusterPorts]
         Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
@@ -3805,6 +3838,11 @@ USAGE()
         Signal a pod on a specific host or on all attached hosts.
         Optionally specify which containers to signal, defualt is all containers in the pod.
 
+    delete pod[:version][@host]
+        Delete pod releases which are in the \"removed\" state.
+        If version is left out the 'latest' version is searched for.
+        If host is left out then delete pod release version for all attached hosts.
+
     release pod[:version] [-p] [-m soft|hard] [-f]
         Perform the compilation and release of a new pod version.
         This operation expects there to be an Ingress Pod names 'ingress'.
@@ -3816,6 +3854,20 @@ USAGE()
 
     daemon-log [host]
         Get the systemd unit daemon log
+
+    pod-shell pod[:version][@host] [-c container] [-B]
+        Step into a shell inside a container of a pod.
+        If version is left out the 'latest' version is searched for.
+        If host is left out then enter the container on each host, in sequential order.
+        -c option states the name of the container to enter.
+           If not set then the last container of the pod is entered (as defined in the pod.yaml).
+        -B set to force the use of bash as shell, otherwise uses sh.
+
+    host-shell host [-s] [-B]
+        Step into a shell inside a specific host.
+        -s option dictates if to enter as the superuser.
+        -B set to force the use of bash as shell, otherwise uses sh.
+
 " >&2
 }
 
@@ -3874,6 +3926,13 @@ SET_POD_RELEASE_STATE()
     shift
 
     _PRJ_SET_POD_RELEASE_STATE "${state}" "$@"
+}
+
+DELETE_POD()
+{
+    local _SPACE_NAME="DELETE_POD"
+
+    _PRJ_DELETE_POD "$@"
 }
 
 UPDATE_POD_CONFIG()
@@ -4026,8 +4085,8 @@ CLUSTER_IMPORT_POD_CFG()
 CLUSTER_STATUS()
 {
     local _SPACE_NAME="CLUSTER_STATUS"
-    :
-    # TODO
+
+    _PRJ_GET_CLUSTER_STATUS
 }
 
 CLUSTER_CREATE()
@@ -4186,6 +4245,38 @@ GET_POD_STATUS()
     local _SPACE_NAME="GET_POD_STATUS"
 
     _PRJ_GET_POD_STATUS "$@"
+}
+
+POD_SHELL()
+{
+    local _SPACE_NAME="POD_SHELL"
+
+    local podTriple="${1}"
+    shift
+
+    local container="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local useBash="${1:-false}"
+    shift $(($# > 0 ? 1 : 0))
+
+    _PRJ_POD_SHELL "${podTriple}" "${container}" "${useBash}"
+}
+
+HOST_SHELL()
+{
+    local _SPACE_NAME="HOST_SHELL"
+
+    local host="${1}"
+    shift
+
+    local superUser="${1:-false}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local useBash="${1:-false}"
+    shift $(($# > 0 ? 1 : 0))
+
+    _PRJ_HOST_SHELL "${host}" "${superUser}" "${useBash}"
 }
 
 STRING_ITEM_COUNT()
@@ -4632,6 +4723,70 @@ _PRJ_SET_POD_RELEASE_STATE()
     done
 }
 
+_PRJ_DELETE_POD()
+{
+    local _SPACE_NAME="_PRJ_DELETE_POD"
+
+    local podTriple=
+    for podTriple in "$@"; do
+        local pod=
+        local version=
+        local host=
+        if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
+            return 1
+        fi
+
+        local hosts=
+        if [ -n "${host}" ]; then
+            if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+                PRINT "Host ${host} does not exist." "error" 0
+                return 1
+            fi
+
+            hosts="${host}"
+        else
+            hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
+        fi
+        unset host
+
+        if [ -z "${hosts}" ]; then
+            PRINT "Pod '${pod}' is not attached to any host." "warning" 0
+            continue
+        fi
+
+        local podVersion=
+        local host=
+        for host in ${hosts}; do
+            if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+                PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
+                continue
+            fi
+
+            local stateFile="pod.state"
+            local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
+            local targetPodDir2="${CLUSTERPATH}/${host}/pods/${pod}/release/.${podVersion}.$(date +%s)"
+            local targetPodStateFile="${targetPodDir}/${stateFile}"
+
+            if [ ! -f "${targetPodStateFile}" ]; then
+                PRINT "Pod ${pod}:${podVersion} not found on host ${host}. Skipping." "warning" 0
+                continue
+            fi
+
+            local state="$(cat "${targetPodStateFile}")"
+            if [ "${state}" != "removed" ]; then
+                PRINT "Pod ${pod}:${podVersion} on host ${host} is not in the 'removed' state. Skipping." "warning" 0
+                continue
+            fi
+
+            mv "${targetPodDir}" "${targetPodDir2}"
+
+            PRINT "Delete release ${podVersion} on host ${host}" "info" 0
+
+            _PRJ_LOG_P "${host}" "${pod}" "DELETE_RELEASE ${podVersion}"
+        done
+    done
+}
+
 _PRJ_UPDATE_POD_CONFIG()
 {
     local _SPACE_NAME="_PRJ_UPDATE_POD_CONFIG"
@@ -4805,7 +4960,8 @@ _PRJ_COMPILE_POD()
         local variablesAll=""       # For show, all variables read from cluster-vars.env
         local variablesToSubst2=""  # Use this to save variable names for the second sweep of substitutions.
         local values=""             # Values to substitute in first sweep
-        local newPorts=""           # To keep track of already assigned ports
+        local newHostPorts=""       # To keep track of already assigned host ports
+        local newClusterPorts=""   # To keep track of already assigned cluster ports
         local varname=
         for varname in ${variablesToSubst}; do
             # Do sanity check on the variable name extracted.
@@ -4818,12 +4974,23 @@ _PRJ_COMPILE_POD()
                 # This is an auto host port assignment,
                 # we need to find a free port and assign the variable.
                 local newport=
-                if ! newport="$(_PRJ_GET_FREE_HOSTPORT "${host}" "${newPorts}")"; then
-                    PRINT "Could not acquire a free port on the host ${host}." "error" 0
+                if ! newport="$(_PRJ_GET_FREE_HOSTPORT "${host}" "${newHostPorts}")"; then
+                    PRINT "Could not acquire a free host port on the host ${host}." "error" 0
                     status=1
                     break 2
                 fi
-                newPorts="${newPorts} ${newport}"
+                newHostPorts="${newHostPorts} ${newport}"
+                values="${values}${values:+${newline}}${varname}=${newport}"
+            elif [ "${varname#CLUSTERPORTAUTO}" != "${varname}" ]; then
+                # This is an auto cluster port assignment,
+                # we need to find a free port and assign the variable.
+                local newport=
+                if ! newport="$(_PRJ_GET_FREE_CLUSTERPORT "${newHostPorts}")"; then
+                    PRINT "Could not acquire a free cluster port." "error" 0
+                    status=1
+                    break 2
+                fi
+                newHostPorts="${newHostPorts} ${newport}"
                 values="${values}${values:+${newline}}${varname}=${newport}"
             else
                 # This is user defined variable, check if it is global or pod specific.
@@ -4843,9 +5010,14 @@ _PRJ_COMPILE_POD()
             fi
         done
 
-        if [ -n "${newPorts}" ]; then
-            PRINT "Host ports auto generated:${newPorts}" "info" 0
+        if [ -n "${newClusterPorts}" ]; then
+            PRINT "Cluster ports auto generated:${newClusterPorts}" "info" 0
         fi
+
+        if [ -n "${newClusterPorts}" ]; then
+            PRINT "Host ports auto generated:${newClusterPorts}" "info" 0
+        fi
+
         PRINT "Variable names extracted from pod.yaml and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
         # Check so that all variables are defined in cluster-vars.env, if not issue a warning.
         local varname=
@@ -5054,11 +5226,13 @@ _PRJ_ATTACH_POD()
     local varname=
     for varname in ${variablesToSubst}; do
         if STRING_IS_ALL "${varname}" "A-Z0-9_"; then
-            # Don't show HOSTPORTAUTOxyz variable names
-            if [ "${varname#HOSTPORTAUTO}" = "${varname}" ]; then
+            # ALL CAPS global variables
+            # Don't show {HOST,CLUSTER}PORTAUTOxyz variable names
+            if [ "${varname#HOSTPORTAUTO}" = "${varname}" ] && [ "${varname#CLUSTERPORTAUTO}" = "${varname}" ]; then
                 PRINT "Variable ${varname} should be defined in cluster-vars.yaml" "info" 0
             fi
         else
+            # Prefixed variable names.
             PRINT "Variable ${pod}_${varname} should be defined in cluster-vars.yaml" "info" 0
         fi
     done
@@ -5274,21 +5448,17 @@ KEYFILE=${SUPERKEYFILE}
 PORT=${PORT}
 JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 
-    local i=
     local status=
-    # Try one time before failing
-    for i in 1; do
-        cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "setup_host" "${USER}" "${EXPOSE}" "${INTERNAL}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        fi
-    done
+    cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "setup_host" "${USER}" "${EXPOSE}" "${INTERNAL}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
 
     PRINT "Could not install setup host" "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 _PRJ_HOST_CREATE_SUPERUSER()
@@ -5364,23 +5534,19 @@ KEYFILE=${keyfile}
 PORT=${PORT}
 JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 
-    local i=
     local status=
-    # Try one time before failing
-    for i in 1; do
-        cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "create_superuser" "${SUPERUSER}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            rm "${hostEnv2}"
-            return 0
-        fi
-    done
+    cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "create_superuser" "${SUPERUSER}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        rm "${hostEnv2}"
+        return 0
+    fi
     rm "${hostEnv2}"
 
     PRINT "Could not create super user." "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 _PRJ_HOST_DISABLE_ROOT()
@@ -5443,23 +5609,19 @@ KEYFILE=${SUPERKEYFILE}
 PORT=${PORT}
 JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 
-    local i=
     local status=
-    # Try one time before failing
-    for i in 1; do
-        _REMOTE_EXEC "${host}:${hostEnv2}" "disable_root"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            rm "${hostEnv2}"
-            return 0
-        fi
-    done
+    _REMOTE_EXEC "${host}:${hostEnv2}" "disable_root"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        rm "${hostEnv2}"
+        return 0
+    fi
     rm "${hostEnv2}"
 
     PRINT "Could not disable root." "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 _PRJ_HOST_INIT()
@@ -5484,26 +5646,20 @@ _PRJ_HOST_INIT()
         return 1
     fi
 
-    local i=
     local status=
-    # Try one time before failing
-    for i in 1; do
-        _REMOTE_EXEC "${host}" "init_host" "${clusterID}" "${force}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 2 ]; then
-            PRINT "Host already initiated with other cluster ID." "error" 0
-            return 2
-        elif [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
+    _REMOTE_EXEC "${host}" "init_host" "${clusterID}" "${force}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    elif [ "${status}" -eq 2 ]; then
+        PRINT "Host already initiated with other cluster ID." "error" 0
+        return 2
+    fi
 
     PRINT "Could not init host to cluster." "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 _PRJ_HOST_CREATE()
@@ -5635,6 +5791,12 @@ _PRJ_CLUSTER_IMPORT_POD_CFG()
     _PRJ_LOG_C "IMPORT_POD_CFG ${pod}:${configCommit}"
 }
 
+_PRJ_GET_CLUSTER_STATUS()
+{
+    local _SPACE_NAME="_PRJ_GET_CLUSTER_STATUS"
+    :
+}
+
 _PRJ_CLUSTER_CREATE()
 {
     local _SPACE_NAME="_PRJ_CLUSTER_CREATE"
@@ -5673,6 +5835,7 @@ _SYNC_RUN()
 
     # The sync does the following:
 
+    #   1.  Check if any cluster/host ports are clashing.
     #   2.  Get the git commit chain of IDs.
     #   For each host:
     #   3.  Check so that no other sync is already in progress.
@@ -5695,6 +5858,10 @@ _SYNC_RUN()
 
     local quite="${1:-false}"
     shift
+
+    if ! _PRJ_CHECK_PORT_CLASHES; then
+        return 1
+    fi
 
     local hosts=
     hosts="$(_PRJ_LIST_HOSTS 1)"
@@ -6414,6 +6581,88 @@ _PRJ_GET_POD_STATUS()
         fi
         printf "%s/%s\\n" "${countReady}" "${totalCount}"
     fi
+}
+
+_PRJ_POD_SHELL()
+{
+    local _SPACE_NAME="_PRJ_POD_SHELL"
+
+    local podTriple="${1}"
+    shift
+
+    local container="${1}"
+    shift
+
+    local useBash="${1:-false}"
+    shift
+
+    local pod=
+    local version=
+    local host=
+    if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
+        return 1
+    fi
+
+    local hosts=
+    if [ -n "${host}" ]; then
+        if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+            PRINT "Host ${host} does not exist" "error" 0
+            return 1
+        fi
+
+        hosts="${host}"
+    else
+        hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
+    fi
+    unset host
+
+    if [ -z "${hosts}" ]; then
+        PRINT "Pod is not attached to any host." "warning" 0
+        return
+    fi
+
+    local podVersion=
+    local host=
+    for host in ${hosts}; do
+        if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            PRINT "Pod ${pod}:${version}@${host} does not exist" "warning" 0
+            continue
+        fi
+
+        PRINT "Enter shell of ${pod}:${podVersion}@${host}" "info" 0
+        if ! _REMOTE_EXEC "${host}" "pod_shell" "${pod}" "${podVersion}" "${container}" "${useBash}"; then
+            PRINT "Could not enter pod ${pod}:${podVersion}@${host}" "error" 0
+        fi
+    done
+}
+
+_PRJ_HOST_SHELL()
+{
+    local _SPACE_NAME="_PRJ_HOST_SHELL"
+
+    local host="${1}"
+    shift
+
+    local superUser="${1}"
+    shift
+
+    local useBash="${1}"
+    shift
+
+    if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+        PRINT "Host ${host} does not exist" "error" 0
+        return 1
+    fi
+
+    if [ "${superUser}" = "true" ]; then
+        PRINT "Enter superuser shell of host ${host}" "info" 0
+        local hostEnv="${CLUSTERPATH}/${host}/host-superuser.env"
+        _REMOTE_EXEC "${host}:${hostEnv}" "host_shell" "${useBash}"
+    else
+        PRINT "Enter shell of host ${host}" "info" 0
+        _REMOTE_EXEC "${host}" "host_shell" "${useBash}"
+    fi
+
 }
 
 _PRJ_DOES_HOST_EXIST()
@@ -7150,21 +7399,14 @@ _PRJ_GET_POD_LOGS2()
 
     local i=
     local status=
-    # Try one times before failing
-    for i in 1; do
-        _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
-
-    PRINT "Could not get logs from host." "error" 0
-
-    # Failed
-    return 1
+    _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    else
+        PRINT "Could not get logs from host." "error" 0
+        return "${status}"
+    fi
 }
 
 STRING_IS_NUMBER()
@@ -7429,9 +7671,7 @@ _PRJ_GET_FREE_HOSTPORT()
     local dir="${CLUSTERPATH}/${host}/pods"
 
     # Extract hostPorts from the proxy config lines.
-    local pod_hostports="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2)"
-    local usedPorts="${pod_hostports#*[\"]}"
-    usedPorts="${usedPorts%[\"]*}"
+    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2)"
 
     local port=29999
     local p=
@@ -7450,8 +7690,42 @@ _PRJ_GET_FREE_HOSTPORT()
         break
     done
 
-    if [ "${port}" -gt 32000 ]; then
-        PRINT "All ports between 30000-32000 are already claimed on host ${host}." "error" 0
+    if [ "${port}" -gt "31999" ]; then
+        PRINT "All ports between 30000-31999 are already claimed on host ${host}. You need to purge some old versions of pods to free up claims on host ports." "error" 0
+        return 1
+    fi
+
+    printf "%s\\n" "${port}"
+}
+
+_PRJ_GET_FREE_CLUSTERPORT()
+{
+    local _SPACE_NAME="_PRJ_GET_FREE_CLUSTERPORT"
+
+    local reservedPorts="${1}"
+
+    # Extract clusterPorts from the proxy config lines from all pods on all hosts.
+    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1)"
+
+    local port=60999
+    local p=
+    while true; do
+        port=$((port+1))
+        for p in ${usedPorts}; do
+            if [ "${p}" -eq "${port}" ]; then
+                continue 2
+            fi
+        done
+        for p in ${reservedPorts}; do
+            if [ "${p}" -eq "${port}" ]; then
+                continue 2
+            fi
+        done
+        break
+    done
+
+    if [ "${port}" -gt "63999" ]; then
+        PRINT "All cluster ports between 61000-63999 are already claimed on cluster. You need to purge some old versions of pods to free up claims on cluster ports." "error" 0
         return 1
     fi
 
@@ -7597,6 +7871,16 @@ _REMOTE_EXEC()
                 RUN="${REMOTE_DISABLE_ROOT}"
             fi
             ;;
+        "pod_shell")
+            if [ -n "${REMOTE_POD_SHELL}" ]; then
+                RUN="${REMOTE_POD_SHELL}"
+            fi
+            ;;
+        "host_shell")
+            if [ -n "${REMOTE_HOST_SHELL}" ]; then
+                RUN="${REMOTE_HOST_SHELL}"
+            fi
+            ;;
         *)
             # Unknown action type
             PRINT "Unknown action type: ${action}." "error"
@@ -7730,20 +8014,16 @@ _SYNC_GET_METADATA()
     local host="${1}"
     shift
 
-    local i=
     local status=
     local data=
-    # Try three times before failing
-    for i in 1 2 3; do
-        data="$(_REMOTE_EXEC "${host}" "get_host_metadata")"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            printf "%s\\n" "${data}"
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
+    data="$(_REMOTE_EXEC "${host}" "get_host_metadata")"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        printf "%s\\n" "${data}"
+        return 0
+    elif [ "${status}" -eq 10 ]; then
+        return 1
+    fi
 
     PRINT "Could not get metadata." "error" 0
     # Failed
@@ -7848,21 +8128,17 @@ _SYNC_ACQUIRE_LOCK()
 
     PRINT "Acquire lock using token: ${token}" "info" 0
 
-    local i=
     local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "acquire_lock" "${token}" "${seconds}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 2 ]; then
-            PRINT "Could not acquire lock. Some other sync process might be happening simultanously, aborting. Please try again in a few minutes." "error" 0
-            return 2
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
+    _REMOTE_EXEC "${host}" "acquire_lock" "${token}" "${seconds}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    elif [ "${status}" -eq 2 ]; then
+        PRINT "Could not acquire lock. Some other sync process might be happening simultanously, aborting. Please try again in a few minutes." "error" 0
+        return 2
+    elif [ "${status}" -eq 10 ]; then
+        return 1
+    fi
 
     # Failed
     PRINT "Could not acquire lock." "error" 0
@@ -7963,6 +8239,40 @@ _SYNC_RM_TMP_FILES()
     done
 }
 
+_PRJ_CHECK_PORT_CLASHES()
+{
+    local _SPACE_NAME="_PRJ_CHECK_PORT_CLASHES"
+
+    local err=0
+    local host=
+    hosts="$(_PRJ_LIST_HOSTS 0)"
+    for host in ${hosts}; do
+        # Get all cluster ports on host
+        local dir="${CLUSTERPATH}/${host}/pods"
+        # Extract clusterPorts from the proxy config lines.
+        local clusterPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
+        # Extract hostPorts from the proxy config lines.
+        local hostPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
+
+        local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
+
+        # Check if there are any duplicate host ports in usage on the host.
+        if [ -n "${duplicateHostPorts}" ]; then
+            PRINT "Duplicate usage of host ports detected on host ${host}: ${duplicateHostPorts}" "error" 0
+            err=1
+        fi
+
+        # Check if any hostport is interfering with any clusterport
+        local clashingPorts="$( { printf "%s\\n" "${hostPorts}" |uniq; printf "%s\\n" "${clusterPorts}" |uniq; } |sort |uniq -d)"
+        if [ -n "${clashingPorts}" ]; then
+            PRINT "Clashing of cluster and host ports detected on host ${host}: ${clashingPorts}" "error" 0
+            err=1
+        fi
+    done
+
+    return "${err}"
+}
+
 _PRJ_GET_DAEMON_LOG2()
 {
     local _SPACE_NAME="_PRJ_GET_DAEMON_LOG2"
@@ -7975,23 +8285,17 @@ _PRJ_GET_DAEMON_LOG2()
         return 1
     fi
 
-    local i=
     local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "daemon-log"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
+    _REMOTE_EXEC "${host}" "daemon-log"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
 
     PRINT "Could not get daemon log from host" "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 STRING_REPEAT()
@@ -8082,23 +8386,17 @@ _PRJ_SIGNAL_POD2()
     local podVersion="${1}"
     shift
 
-    local i=
     local status=
-    # Try one times before failing
-    for i in 1; do
-        _REMOTE_EXEC "${host}" "signal" "${pod}" "${podVersion}" "$@"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
+    _REMOTE_EXEC "${host}" "signal" "${pod}" "${podVersion}" "$@"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
 
     PRINT "Could not signal pod on host." "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 _RELEASE_HARD()
@@ -8125,6 +8423,10 @@ _RELEASE_HARD()
         if ! _PRJ_SET_POD_RELEASE_STATE "removed" ${otherVersions}; then
             return 1
         fi
+        # Remove the other version of the pod from the ingress configuration
+        if ! _PRJ_SET_POD_INGRESS_STATE "inactive" ${otherVersions}; then
+            return 1
+        fi
     fi
 
     local currentState="$(_PRJ_GET_POD_RELEASE_STATE "${pod}:${podVersion}" "true")"
@@ -8136,6 +8438,8 @@ _RELEASE_HARD()
     else
         PRINT "Pod version already in the 'running' state" "info" 0
     fi
+
+    _PRJ_SET_POD_INGRESS_STATE "active" "${pod}:${podVersion}"
 
     PRINT "********* GENERATE INGRESS *********" "info" 0
     if ! _PRJ_GEN_INGRESS_CONFIG; then
@@ -8154,13 +8458,6 @@ _RELEASE_HARD()
     fi
 
     PRINT "********* GENERATE INGRESS DONE *********" "info" 0
-
-    if [ "${push}" = "true" ]; then
-        if ! git push -q; then
-            PRINT "Could not push repo to remote" "error" 0
-            return 1
-        fi
-    fi
 
     PRINT "********* SYNCING *********" "info" 0
 
@@ -8216,22 +8513,19 @@ _RELEASE_SOFT()
         PRINT "Pod version already in the 'running' state" "info" 0
     fi
 
-    # Only commit if any changes were made
-    if [ "${podStateUpdated}" = "true" ] || [ "${isCompiled}" = "true" ]; then
+    # Make sure the pods ingress is active
+    _PRJ_SET_POD_INGRESS_STATE "active" "${pod}:${podVersion}"
+
+    # Only commit if any changes were made.
+    # Don't push changes here, because we might want to rollback.
+    if ! _PRJ_IS_CLUSTER_CLEAN; then
         if ! { git add . && git commit -q -m "Soft release ${pod}:${podVersion}"; } then
             return 1
-        fi
-
-        if [ "${push}" = "true" ]; then
-            if ! git push -q; then
-                PRINT "Could not push repo to remote" "error" 0
-                return 1
-            fi
         fi
     fi
 
     PRINT "********* SYNCING *********" "info" 0
-    # If force is set, only force on the first sync, the coming syncs should be in line
+    # If force is set, only force on the first sync, the coming syncs will then be in line
     if ! _SYNC_RUN "${force}" "true"; then
         return 1
     fi
@@ -8250,25 +8544,20 @@ _RELEASE_SOFT()
 
         now="$(date +%s)"
         if [ "$((now > timeout))" -eq 0 ]; then
-            PRINT "Timeout trying to get pod readiness, aborting now. This could be due to a problem with the pod it self or due to network issues" "error" 0
-            if [ "${podStateUpdated}" = "true" ] || [ "${isCompiled}" = "true" ]; then
-                PRINT "Setting version ${podVersion} as 'removed' and syncing again" "info" 0
-                _PRJ_SET_POD_RELEASE_STATE "removed" "${pod}:${podVersion}"
-                git add . && git commit -q -m "New release ${pod}:${podVersion} failed to run. Set state to 'removed' and sync"
-                if [ "${push}" = "true" ]; then
-                    if ! git push -q; then
-                        PRINT "Could not push repo to remote" "error" 0
-                        return 1
-                    fi
-                fi
-                _SYNC_RUN "" "true"
-                return 1
-            fi
+            PRINT "Timeout trying to get pod readiness, aborting now. This could be due to a problem with the pod it self or due to network issues. The cluster might now be in a skewed state. Consider mannually removing ${pod}:${podVersion} if it was released." "error" 0
+            return 1
         fi
     done
 
     PRINT "New release is now running" "info" 0
-    PRINT "Update the ingress" "info" 0
+    PRINT "Remove other versions from ingress and update the ingress" "info" 0
+
+    if [ -n "${otherVersions}" ]; then
+        # Remove the other version of the pod from the ingress configuration
+        if ! _PRJ_SET_POD_INGRESS_STATE "inactive" ${otherVersions}; then
+            return 1
+        fi
+    fi
 
     # New release is up and running, regenerate the ingress
     # Note that if the new version uses the same clusterPorts as the previous version then
@@ -8287,20 +8576,13 @@ _RELEASE_SOFT()
     fi
 
     # Even if no ingress conf was changed, there will by new logfiles, so this commit should not fail.
-    if ! { git add . && git commit -q -m "Update ingress for ${pod}:${podVersion}"; } then
+    if ! { git add . && git commit -q -m "Remove other running versions from ingress: ${otherVersions}. Update ingress for ${pod}:${podVersion}"; } then
         PRINT "Could not commit changes" "error" 0
         return 1
     fi
 
     # TODO: how to know if ingress got updated
     if true; then
-        if [ "${push}" = "true" ]; then
-            if ! git push -q; then
-                PRINT "Could not push repo to remote" "error" 0
-                return 1
-            fi
-        fi
-
         PRINT "********* SYNCING *********" "info" 0
         if ! _SYNC_RUN "" "true"; then
             return 1
@@ -8312,26 +8594,6 @@ _RELEASE_SOFT()
     fi
 
     if [ -n "${otherVersions}" ]; then
-        # Remove the other version of the pod from the ingress configuration
-        if ! _PRJ_SET_POD_INGRESS_STATE "inactive" ${otherVersions}; then
-            return 1
-        fi
-        git add . && git commit -m "Remove other running versions from ingress: ${otherVersions}"
-        if [ "${push}" = "true" ]; then
-            if ! git push -q; then
-                PRINT "Could not push repo to remote" "error" 0
-                return 1
-            fi
-        fi
-        PRINT "********* SYNCING *********" "info" 0
-        if ! _SYNC_RUN "" "true"; then
-            return 1
-        fi
-
-        # Wait so that ingress get's updated
-        PRINT "Waiting for ingress to get updated..." "info" 0
-        sleep 20
-
         # Remove the other pod versions
         if ! _PRJ_SET_POD_RELEASE_STATE "removed" ${otherVersions}; then
             return 1
@@ -8379,23 +8641,17 @@ _PRJ_GET_POD_STATUS2()
         return 1
     fi
 
-    local i=
     local status=
-    # Try two times before failing
-    for i in 1 2; do
-        _REMOTE_EXEC "${host}" "pod_status" "${pod}" "${podVersion}" "${query}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            break
-        fi
-    done
+    _REMOTE_EXEC "${host}" "pod_status" "${pod}" "${podVersion}" "${query}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
 
     PRINT "Could not get pod status from host." "error" 0
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 CONF_READ()
@@ -8684,18 +8940,14 @@ _SYNC_SET_CHAIN()
     local gitCommitChain="${1}"
     shift
 
-    local i=
     local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "set_commit_chain" "${gitCommitChain}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
+    _REMOTE_EXEC "${host}" "set_commit_chain" "${gitCommitChain}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    elif [ "${status}" -eq 10 ]; then
+        return 1
+    fi
 
     # Failed
     PRINT "Could not set chain." "error" 0
@@ -8709,23 +8961,19 @@ _SYNC_DOWNLOAD_RELEASE_DATA()
     local host="${1}"
     shift
 
-    local i=
     local status=
     local data=
-    # Try three times before failing
-    for i in 1 2 3; do
-        data="$(_REMOTE_EXEC "${host}" "pack_release_data")"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            printf "%s\\n" "${data}"
-            return 0
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
+    data="$(_REMOTE_EXEC "${host}" "pack_release_data")"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        printf "%s\\n" "${data}"
+        return 0
+    elif [ "${status}" -eq 10 ]; then
+        return 1
+    fi
 
     # Failed
-    return 1
+    return "${status}"
 }
 
 _SYNC_BUILD_UPDATE_ARCHIVE()
