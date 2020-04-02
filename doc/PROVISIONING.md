@@ -67,7 +67,7 @@ Make sure you have the root passwords available, you will need them in the follo
 Now that we have the actual machines created and our `host.env` files setup, we can use Simplenetes to provision the machines for us.
 Simplenetes can prepare the machines by running a few commands for each host.
 
-Create the superuser we will use for the rest of the provisioning process. If your cloud provider creates a superuser for you then set that SUPERUSER in the `host.env` file and save that SSH key as `id_rsa_super`, and you can skip the two following steps:  
+Create the superuser we will use for the rest of the provisioning process and the superuser keyfile. If your cloud provider creates a superuser for you then set that SUPERUSER in the `host.env` file and save that SSH key as `id_rsa_super` in the host directory, then you can skip the two following steps:  
 ```sh
 snt create-superuser loadbalancer1
 ```

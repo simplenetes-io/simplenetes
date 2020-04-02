@@ -30,7 +30,7 @@ HOST_CREATE()
     local host="${1}"
     shift
 
-    local jumphost="${1:-}"
+    local jumpHost="${1:-}"
     shift $(($# > 0 ? 1 : 0))
 
     local expose="${1:-}"
@@ -373,10 +373,12 @@ USAGE()
 {
     printf "%s\\n" "Usage:
     help
-        Show this help
+    -h
+        Output this help
 
     version
-        Show the version of snt
+    -V
+        Output the version of snt
 
     create-cluster name
         Creates a cluster project with the given name in the current directory.
@@ -388,7 +390,7 @@ USAGE()
         -q set to be more quite.
 
     status
-        Show status of the Cluster
+        Output status of the Cluster
 
     import-config pod
         Import config templates from pod repo into the cluster project
@@ -529,7 +531,6 @@ USAGE()
         Step into a shell inside a specific host.
         -s option dictates if to enter as the superuser.
         -B set to force the use of bash as shell, otherwise uses sh.
-
 " >&2
 }
 
@@ -617,7 +618,21 @@ _GETOPTS()
 SNT_CMDLINE()
 {
     SPACE_SIGNATURE="[action args]"
-    SPACE_DEP="_SNT_CMDLINE FILE_REALPATH PRINT"
+    SPACE_DEP="USAGE VERSION _SNT_CMDLINE FILE_REALPATH PRINT"
+
+    if [ "${1:-help}" = "help" ]; then
+        USAGE
+        return
+    elif [ "${1:-}" = "-h" ]; then
+        USAGE
+        return
+    elif [ "${1:-}" = "version" ]; then
+        VERSION
+        return
+    elif [ "${1:-}" = "-V" ]; then
+        VERSION
+        return
+    fi
 
     local oldCwd="${PWD}"
 
@@ -626,18 +641,22 @@ SNT_CMDLINE()
     local dots="./"
     if [ ! -f "cluster-id.txt" ] && [ "${CLUSTERPATH}" = "${PWD}" ]; then
         PRINT "CLUSTERPATH not valid, searching upwards for cluster-id.txt" "debug"
-        while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
-            dots="../${dots}"
-            if [ -f "${dots}/cluster-id.txt" ]; then
-                # Found it
-                CLUSTERPATH="$(FILE_REALPATH "${dots}")"
-                PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug"
-                if [ ! -d "${PODPATH}" ]; then
-                    PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
-                    PRINT "Setting new PODPATH: ${PODPATH}" "debug"
+        while true; do
+            while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
+                dots="../${dots}"
+                if [ -f "${dots}/cluster-id.txt" ]; then
+                    # Found it
+                    CLUSTERPATH="$(FILE_REALPATH "${dots}")"
+                    PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug"
+                    if [ ! -d "${PODPATH}" ]; then
+                        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
+                        PRINT "Setting new PODPATH: ${PODPATH}" "debug"
+                    fi
+                    break 2
                 fi
-                break
-            fi
+            done
+            PRINT "No cluster project detected, cannot continue" "error" 0
+            return 1
         done
     fi
 
@@ -652,18 +671,14 @@ SNT_CMDLINE()
 _SNT_CMDLINE()
 {
     SPACE_SIGNATURE="[action args]"
-    SPACE_DEP="USAGE VERSION GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE DELETE_POD UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS POD_SHELL HOST_SHELL"
+    SPACE_DEP="GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE DELETE_POD UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS POD_SHELL HOST_SHELL"
     # It is important that CLUSTERPATH is in front of PODPATH, because PODPATH references the former.
     SPACE_ENV="CLUSTERPATH PODPATH"
 
-    local action="${1:-help}"
+    local action="${1:-}"
     shift $(($# > 0 ? 1 : 0))
 
-    if [ "${action}" = "help" ]; then
-        USAGE
-    elif [ "${action}" = "version" ]; then
-        VERSION
-    elif [ "${action}" = "create-cluster" ]; then
+    if [ "${action}" = "create-cluster" ]; then
         local _out_rest=
         if ! _GETOPTS "" "" 1 1 "$@"; then
             printf "Usage: snt create-cluster name\\n" >&2
@@ -698,7 +713,7 @@ _SNT_CMDLINE()
         local _out_e=
         local _out_h=
         local _out_rest=
-        if ! _GETOPTS "" "j e r" 1 1 "$@"; then
+        if ! _GETOPTS "" "j e r h" 1 1 "$@"; then
             printf "Usage: snt create-host host [-j jumpHost] [-e expose [-h hostHome]]\\n" >&2
             return 1
         fi

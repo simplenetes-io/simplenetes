@@ -1357,7 +1357,7 @@ _PRJ_COMPILE_POD()
             fi
         fi
 
-        if ! SPACE_LOG_LEVEL="${SPACE_LOG_LEVEL}" podc "${pod}" "${tmpPodSpec}" "${targetPodSpec}" "${podSpec%/*}" "false"; then
+        if ! SPACE_LOG_LEVEL="${SPACE_LOG_LEVEL}" podc "${pod}" -f "${tmpPodSpec}" -o "${targetPodSpec}" -d "${podSpec%/*}" -p false; then
             status=1
             break
         fi
@@ -1553,19 +1553,15 @@ _PRJ_ATTACH_POD()
             # ALL CAPS global variables
             # Don't show {HOST,CLUSTER}PORTAUTOxyz variable names
             if [ "${varname#HOSTPORTAUTO}" = "${varname}" ] && [ "${varname#CLUSTERPORTAUTO}" = "${varname}" ]; then
-                PRINT "Variable ${varname} should be defined in cluster-vars.yaml" "info" 0
+                PRINT "Variable ${varname} is defined in pod.yaml, you might want to defined it in the cluster-vars.env file" "info" 0
             fi
         else
             # Prefixed variable names.
-            PRINT "Variable ${pod}_${varname} should be defined in cluster-vars.yaml" "info" 0
+            PRINT "Variable ${pod}_${varname} is defined in pod.yaml, you might want to defined it in the cluster-vars.env file" "info" 0
         fi
     done
 
     local podConfigDir="$(FILE_REALPATH "${PODPATH}/${pod}/config")"
-    if [ ! -d "${podConfigDir}" ]; then
-        PRINT "Pod '${pod}' has no configs to be imported." "info" 0
-        return 0
-    fi
 
     if ! mkdir -p "${CLUSTERPATH}/${host}/pods/${pod}"; then
         PRINT "Could not create directory." "error" 0
@@ -1580,8 +1576,8 @@ _PRJ_ATTACH_POD()
     local hosts=
     hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
     if [ "${hosts}" = "${host}" ]; then
-        if [ ! -d "${CLUSTERPATH}/_config/${pod}" ]; then
-            PRINT "This was the first attachement of this pod to this cluster, if there are configs you might want to import them into the cluster at this point. Also any variables referenced in pod.yaml should be defined in cluster-vars.env" "info" 0
+        if [ ! -d "${CLUSTERPATH}/_config/${pod}" ] && [ -d "${podConfigDir}" ]; then
+            PRINT "This was the first attachement of this pod to this cluster, you might want to import the pod configs into the cluster" "info" 0
         fi
     fi
 }
@@ -1699,7 +1695,6 @@ _PRJ_HOST_SETUP()
         EXPOSE="${EXPOSE}${EXPOSE:+ }22"
     fi
 
-    SUPERKEYFILE="$(cd "${CLUSTERPATH}/${host}" && FILE_REALPATH "${SUPERKEYFILE}")"
     KEYFILE="$(cd "${CLUSTERPATH}/${host}" && FILE_REALPATH "${KEYFILE}")"
 
     # If user keyfile does not exist, we create it.
@@ -1717,7 +1712,6 @@ _PRJ_HOST_SETUP()
         return 1
     fi
 
-    # Create the temporary host.env file
     printf "%s\\n" "# Auto generated host.env file to be used with the Space ssh module.
 # You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
 
@@ -1964,7 +1958,7 @@ _PRJ_HOST_CREATE()
     local expose="${1}"
     shift
 
-    local hostHome="${1:-\${HOME}/cluster-host}"
+    local hostHome="${1:-cluster-host}"
     shift
 
     if _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
@@ -2002,7 +1996,7 @@ _PRJ_HOST_CREATE()
     mkdir -p "${dir}"
 
     printf "%s\\n" "# Auto generated host.env file to be used with the Space ssh module.
-# You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
+# You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host.env\".
 
 # HOSTHOME is the directory on the host where this local host sync to.
 HOSTHOME=${hostHome}

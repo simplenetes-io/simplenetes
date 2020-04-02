@@ -49,7 +49,7 @@ sudo mv podman-runtime /opt/podc
 The Daemon should always be installed onto the GNU/BusyBox/Linux Virtual Machines making up the cluster.  
 It can also be installed onto your GNU/BusyBox/Linux laptop to simulate working on a cluster.  
 When installing it locally it does not have to be installed as a Daemon, but can instead be run in user mode as a foreground process.
-The Daemon activates the pod scripts which uses `podman` to run containers. Podman version >=1.8.1 also has to be installed on each host.  
+The Daemon activates the pod scripts which uses `podman` to run containers.
 
 To provision new hosts and clusters, please see [PROVISIONING.md](PROVISIONING.md).  
 

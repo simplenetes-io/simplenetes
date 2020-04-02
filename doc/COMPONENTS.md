@@ -60,6 +60,7 @@ A Host is typically a Virtual Machine in a VLAN, but it can also be your local l
 When Simplenetes is connecting to a Host is reads the `host.env` file and uses that information to establish an SSH connection to the Host.
 
 A Host can declare in it's `host.env` file a `JUMPHOST`, which is used in the SSH connection to connect to first before connecting to the actual Host. This is a recommended way of doing it to not exposing backend Hosts to the public internet at all, so that all connections made must be made via `jumphosts`.
+p   
 
 If the `host.env` file has `JUMPHOST=local` set then it does not connect via SSH, it connects directly on local disk, which is great for local development.
 

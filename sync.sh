@@ -594,11 +594,13 @@ _SYNC_DOWNLOAD_RELEASE_DATA()
 _SYNC_REMOTE_PACK_RELEASE_DATA()
 {
     SPACE_SIGNATURE="hosthome"
-    SPACE_DEP="STRING_SUBST PRINT"
+    SPACE_DEP="STRING_SUBST STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     # Indicate we are still busy
     touch "${HOSTHOME}/lock-token.txt"
@@ -901,11 +903,13 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
 _SYNC_REMOTE_UNPACK_ARCHIVE()
 {
     SPACE_SIGNATURE="hosthome targzfile"
-    SPACE_DEP="_UTIL_GET_TMP_DIR PRINT STRING_SUBST"
+    SPACE_DEP="_UTIL_GET_TMP_DIR PRINT STRING_SUBSTR FILE_REALPATH _SYNC_REMOTE_UNPACK_ARCHIVE2"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local archive="${1}"
     shift

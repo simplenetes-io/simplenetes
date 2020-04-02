@@ -191,11 +191,13 @@ _REMOTE_INIT_HOST()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome clusterID force]"
-    SPACE_DEP="STRING_SUBST PRINT"
+    SPACE_DEP="PRINT STRING_SUBSTR FILE_REALPATH"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local clusterID="${1}"
     shift
@@ -215,10 +217,6 @@ _REMOTE_INIT_HOST()
 
     printf "%s\\n" "${clusterID}" >"${file}"
 
-    # This tells the Daemon where to find our pods.
-    local file2="${HOME}/.simplenetes-daemon.conf"
-    printf "%s\\n" "${HOSTHOME}" >"${file2}"
-
     PRINT "Host now belongs to ${clusterID}" "info" 0
 }
 
@@ -235,11 +233,13 @@ _REMOTE_SIGNAL()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome pod podVersion container]"
-    SPACE_DEP="STRING_SUBST PRINT"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local pod="${1}"
     shift
@@ -261,11 +261,13 @@ _REMOTE_HOST_SHELL()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome useBash]"
-    SPACE_DEP="STRING_SUBST"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local useBash="${1:-false}"
     shift
@@ -284,11 +286,13 @@ _REMOTE_POD_SHELL()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome pod podVersion container useBash]"
-    SPACE_DEP="STRING_SUBST PRINT"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local pod="${1}"
     shift
@@ -320,11 +324,13 @@ _REMOTE_POD_STATUS()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome pod podVersion query]"
-    SPACE_DEP="STRING_SUBST PRINT"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local pod="${1}"
     shift
@@ -357,11 +363,13 @@ _REMOTE_LOGS()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome pod podVersion timestamp limit streams]"
-    SPACE_DEP="STRING_SUBST PRINT"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local pod="${1}"
     shift
@@ -529,11 +537,13 @@ _REMOTE_ACQUIRE_LOCK()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome token seconds]"
-    SPACE_DEP="PRINT STRING_SUBST FILE_STAT"
+    SPACE_DEP="PRINT STRING_SUBSTR FILE_REALPATH FILE_STAT"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local token="${1}"
     shift
@@ -572,11 +582,13 @@ _REMOTE_SET_COMMITCHAIN()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome gitCommitChain]"
-    SPACE_DEP="STRING_SUBST"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local chain="${1}"
     shift
@@ -588,11 +600,13 @@ _REMOTE_RELEASE_LOCK()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome token]"
-    SPACE_DEP="STRING_SUBST PRINT"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local token="${1}"
     shift
@@ -615,11 +629,13 @@ _REMOTE_GET_HOST_METADATA()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome]"
-    SPACE_DEP="STRING_SUBST"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     local clusterID="$(cat "${HOSTHOME}/cluster-id.txt" 2>/dev/null)"
     local chain="$(cat "${HOSTHOME}/commit-chain.txt" 2>/dev/null)"
@@ -641,11 +657,13 @@ _REMOTE_UPLOAD_ARCHIVE()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome]"
-    SPACE_DEP="_UTIL_GET_TMP_FILE STRING_SUBST PRINT"
+    SPACE_DEP="_UTIL_GET_TMP_FILE STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
     shift
-    STRING_SUBST "HOSTHOME" '${HOME}' "$HOME" 1
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+    fi
 
     # Indicate we are still busy
     touch "${HOSTHOME}/lock-token.txt"

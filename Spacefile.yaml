@@ -148,7 +148,6 @@ cluster:
                 title: Using the regular user, initialize a host to be part of the cluster and configure the Daemon to manage it's pods
                 desc: |
                     This will set the cluster ID on the host, marking it as part of this cluster.
-                    It will configure the ~/.simplenetes-daemon.conf file to point to the $HOSTHOME (which is defined in the host.env file).
             _env:
                 - host:
                     title: Name of the host to initialize onto this cluster
