@@ -9,7 +9,7 @@
 _RELEASE()
 {
     SPACE_SIGNATURE="podTuple [mode push force]"
-    SPACE_DEP="_PRJ_COMPILE_POD PRINT _PRJ_LOG_C _PRJ_GET_POD_RELEASE_STATE _RELEASE_HARD _RELEASE_SOFT _PRJ_LS_POD_RELEASE_STATE STRING_SUBST _PRJ_IS_CLUSTER_CLEAN _PRJ_SPLIT_POD_TRIPLE"
+    SPACE_DEP="_PRJ_COMPILE_POD PRINT _PRJ_LOG_C _RELEASE_HARD _RELEASE_SOFT _PRJ_LS_POD_RELEASE_STATE STRING_SUBST _PRJ_IS_CLUSTER_CLEAN _PRJ_SPLIT_POD_TRIPLE"
     SPACE_ENV="CLUSTERPATH"
 
     local podTuple="${1}"
@@ -39,6 +39,18 @@ _RELEASE()
         return 1
     fi
 
+    # Check so that we have an ingress pod, and that we are not trying to release the ingress pod using this method.
+    if [ "${pod}" = "ingress" ]; then
+        PRINT "You cannot use this method to release the ingress pod. Please release it manually." "error" 0
+        return 1
+    fi
+
+    local ingressReleases="$(_PRJ_LS_POD_RELEASE_STATE "" "" "ingress")"
+    if [ -z "${ingressReleases}" ]; then
+        PRINT "No ingress pod in this project, cannot use this release method." "error" 0
+        return 1
+    fi
+
     if ! _PRJ_IS_CLUSTER_CLEAN; then
         PRINT "The cluster git project is not clean and committed. Cannot continue until it is." "error" 0
         return 1
@@ -55,7 +67,7 @@ _RELEASE()
     else
         # Either pod version exists or is to be compiled
         local lines=
-        lines="$(_PRJ_GET_POD_RELEASE_STATE "${pod}:${version}")"
+        lines="$(_PRJ_LS_POD_RELEASE_STATE "" "" "${pod}:${version}")"
         if [ -n "${lines}" ]; then
             PRINT "${pod}:${version} does exist, re-release it" "info" 0
             podVersion="${version}"
@@ -118,7 +130,7 @@ _RELEASE()
 #    and point the ingress to the new version, all at the same time, which will give a blip of downtime most likely.
 _RELEASE_HARD()
 {
-    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_GET_POD_RELEASE_STATE _PRJ_SET_POD_INGRESS_STATE"
+    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_SET_POD_INGRESS_STATE"
 
     local pod="${1}"
     shift
@@ -146,14 +158,9 @@ _RELEASE_HARD()
         fi
     fi
 
-    local currentState="$(_PRJ_GET_POD_RELEASE_STATE "${pod}:${podVersion}" "true")"
-    if [ "${currentState}" != "running" ]; then
-        PRINT "Set pod version ${podVersion} to be 'running'" "info" 0
-        if ! _PRJ_SET_POD_RELEASE_STATE "running" "${pod}:${podVersion}"; then
-            return 1
-        fi
-    else
-        PRINT "Pod version already in the 'running' state" "info" 0
+    PRINT "Set pod version ${podVersion} to be 'running'" "info" 0
+    if ! _PRJ_SET_POD_RELEASE_STATE "running" "${pod}:${podVersion}"; then
+        return 1
     fi
 
     _PRJ_SET_POD_INGRESS_STATE "active" "${pod}:${podVersion}"
@@ -213,7 +220,7 @@ _RELEASE_HARD()
 # # TODO: implent the above.
 _RELEASE_SOFT()
 {
-    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_SET_POD_INGRESS_STATE _PRJ_GET_POD_STATUS _PRJ_GET_POD_RELEASE_STATE _PRJ_IS_CLUSTER_CLEAN"
+    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_SET_POD_INGRESS_STATE _PRJ_GET_POD_STATUS _PRJ_IS_CLUSTER_CLEAN"
 
     local pod="${1}"
     shift
@@ -232,16 +239,9 @@ _RELEASE_SOFT()
 
     PRINT "********* Perform soft release of ${pod}:${podVersion} *********" "info" 0
 
-    local podStateUpdated="false"
-    local currentState="$(_PRJ_GET_POD_RELEASE_STATE "${pod}:${podVersion}" "true")"
-    if [ "${currentState}" != "running" ]; then
-        PRINT "Set pod version ${podVersion} to be 'running'" "info" 0
-        if ! _PRJ_SET_POD_RELEASE_STATE "running" "${pod}:${podVersion}"; then
-            return 1
-        fi
-        podStateUpdated="true"
-    else
-        PRINT "Pod version already in the 'running' state" "info" 0
+    PRINT "Set pod version ${podVersion} to be 'running'" "info" 0
+    if ! _PRJ_SET_POD_RELEASE_STATE "running" "${pod}:${podVersion}"; then
+        return 1
     fi
 
     # Make sure the pods ingress is active
@@ -274,7 +274,7 @@ _RELEASE_SOFT()
         fi
 
         now="$(date +%s)"
-        if [ "$((now > timeout))" -eq 0 ]; then
+        if [ "${now}" -ge "${timeout}" ]; then
             PRINT "Timeout trying to get pod readiness, aborting now. This could be due to a problem with the pod it self or due to network issues. The cluster might now be in a skewed state. Consider mannually removing ${pod}:${podVersion} if it was released." "error" 0
             return 1
         fi

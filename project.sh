@@ -1,5 +1,51 @@
 # PROJECT specific
 #
+
+# Generate registry login config.json files.
+_PRJ_REGISTRY_CONFIG()
+{
+    SPACE_SIGNATURE="[host]"
+    SPACE_ENV="CLUSTERPATH"
+    SPACE_DEP="_PRJ_DOES_HOST_EXIST"
+
+    if [ -n "${host}" ] && [ "${host}" != '-' ]; then
+        if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+            PRINT "Host ${host} does not exist" "error" 0
+            return 1
+        fi
+    fi
+
+    local lines=
+    local line=
+    local comma=""
+    lines="$(
+        while read line; do
+            local registry="${line%%:*}"
+            local password="${line##*:}"
+            local user="${line#*:}"
+            user="${user%:*}"
+
+            local auth="$(printf "%s:%s" "${user}" "${password}" |base64)"
+            printf "    ${comma}\"%s\": { \"auth\": \"%s\" }\\n" "${registry}" "${auth}"
+            comma=','
+        done
+    )"
+
+    local output="$(
+        printf "{\\n  \"auths\": {\\n"
+        printf "${lines}\\n"
+        printf "  }\\n}\\n"
+    )"
+
+    if [ "${host}" = "-" ]; then
+        printf "%s\\n" "${output}"
+    elif [ -z "${host}" ]; then
+        printf "%s\\n" "${output}" >"${CLUSTERPATH}/registry-config.json"
+    else
+        printf "%s\\n" "${output}" >"${CLUSTERPATH}/${host}/registry-config.json"
+    fi
+}
+
 # Connect to the cluster and retrieve logs for a pod instance.
 _PRJ_GET_POD_LOGS()
 {
@@ -719,7 +765,7 @@ _PRJ_LS_POD_RELEASE_STATE()
     unset host
 
     if [ -z "${hosts}" ]; then
-        PRINT "Pod is not attached to any host" "warning" 0
+        PRINT "Pod '${pod}' is not attached to any host" "warning" 0
         return
     fi
 
@@ -1927,8 +1973,15 @@ _PRJ_HOST_INIT()
         return 1
     fi
 
+    local configJsonContent=""
+    if [ -f "${CLUSTERPATH}/${host}/registry-config.json" ]; then
+        configJsonContent="$(cat "${CLUSTERPATH}/${host}/registry-config.json")"
+    elif [ -f "${CLUSTERPATH}/registry-config.json" ]; then
+        configJsonContent="$(cat "${CLUSTERPATH}/registry-config.json")"
+    fi
+
     local status=
-    _REMOTE_EXEC "${host}" "init_host" "${clusterID}" "${force}"
+    printf "%s\\n" "${configJsonContent}" |_REMOTE_EXEC "${host}" "init_host" "${clusterID}" "${force}"
     status="$?"
     if [ "${status}" -eq 0 ]; then
         return 0

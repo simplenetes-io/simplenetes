@@ -82,6 +82,17 @@ HOST_CREATE_SUPERUSER()
     _PRJ_HOST_CREATE_SUPERUSER "${host}" "${keyfile}"
 }
 
+REGISTRY_CONFIG()
+{
+    SPACE_SIGNATURE="[host]"
+    SPACE_DEP="_PRJ_REGISTRY_CONFIG"
+
+    local host="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    _PRJ_REGISTRY_CONFIG "${host}"
+}
+
 # Run as superuser
 HOST_SETUP()
 {
@@ -403,7 +414,8 @@ USAGE()
         -h hostHome can be specified
 
     init-host host
-        Initialize a host to be part of the cluster and configure the Daemon to manage it's pods
+        Initialize a host to be part of the cluster and configure the Daemon to manage it's pods.
+        Also upload the registry-config.json file for the host. This command is idempotent and is safe to run multiple times.
 
     setup-host host
         Setup the host using the superuser
@@ -531,6 +543,18 @@ USAGE()
         Step into a shell inside a specific host.
         -s option dictates if to enter as the superuser.
         -B set to force the use of bash as shell, otherwise uses sh.
+
+    registry-config [host]
+        Generate a registry-config.json file for a host or the cluster, so that podman can use that when pulling images from private registries.
+
+        If the host argument is left out then generate a default file for the cluster, which is placed in the cluster base directory.
+        This file is uploaded to the host when performing \"snt init-host <host>\" and stored as \"\$HOME/.docker/config.json\" (the command should be run whenever the file is updated).
+        If no registry-config.json exists in the host dir then use the cluster default in the cluster base dir (if any).
+
+        If you already have an existing \"config.json\" you can place that in in the cluster dir or in a host dir named as registry-config.json.
+
+        If host it set to \"-\" then output the generated file on stdout only. This can be useful when manually appending to already existing files.
+
 " >&2
 }
 
@@ -671,7 +695,7 @@ SNT_CMDLINE()
 _SNT_CMDLINE()
 {
     SPACE_SIGNATURE="[action args]"
-    SPACE_DEP="GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE DELETE_POD UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS POD_SHELL HOST_SHELL"
+    SPACE_DEP="GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE DELETE_POD UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS POD_SHELL HOST_SHELL REGISTRY_CONFIG"
     # It is important that CLUSTERPATH is in front of PODPATH, because PODPATH references the former.
     SPACE_ENV="CLUSTERPATH PODPATH"
 
@@ -961,6 +985,19 @@ _SNT_CMDLINE()
         fi
         set -- ${_out_rest}
         HOST_SHELL "${1}" "${_out_s}" "${_out_B}"
+    elif [ "${action}" = "registry-config" ]; then
+        # We don't use _GETOPTS here because the argument '-' confuses it.
+        local _out_rest=
+
+        if [ "$#" -gt 1 ]; then
+            printf "Usage: snt registry-config [host]\\n
+registry-url:username:password
+etc
+<ctrl-d>
+" >&2
+            return 1
+        fi
+        REGISTRY_CONFIG "${1:-}"
     else
         PRINT "Unknown command" "error" 0
         return 1

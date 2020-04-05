@@ -196,7 +196,7 @@ _REMOTE_INIT_HOST()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     local clusterID="${1}"
@@ -215,9 +215,13 @@ _REMOTE_INIT_HOST()
 
     mkdir -p "${HOSTHOME}/pods"
 
-    printf "%s\\n" "${clusterID}" >"${file}"
+    # Get the config.json on STDIN
+    local content="$(cat)"
 
-    PRINT "Host now belongs to ${clusterID}" "info" 0
+    if [ -n "${content}" ]; then
+        mkdir -p "${HOME}/.docker"
+        printf "%s\\n" "${content}" >"${HOME}/.docker/config.json"
+    fi
 }
 
 _REMOTE_DAEMON_LOG()
@@ -238,7 +242,7 @@ _REMOTE_SIGNAL()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     local pod="${1}"
@@ -266,7 +270,7 @@ _REMOTE_HOST_SHELL()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     local useBash="${1:-false}"
@@ -291,7 +295,7 @@ _REMOTE_POD_SHELL()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     local pod="${1}"
@@ -329,7 +333,7 @@ _REMOTE_POD_STATUS()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     local pod="${1}"
@@ -368,7 +372,7 @@ _REMOTE_LOGS()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     local pod="${1}"
@@ -393,7 +397,7 @@ _REMOTE_LOGS()
         return 1
     fi
 
-    ${podFile} logs "" "${tail}" "${since}"
+    ${podFile} logs -l "${limit}" -t "${timestamp}" -s "${streams}"
 }
 
 # Public key of new user must come on stdin
@@ -448,7 +452,12 @@ _REMOTE_HOST_SETUP()
     fi
 
     # Allow for users to bind from port 1 and updwards
-    sysctl net.ipv4.ip_unprivileged_port_start=1
+    local contents=""
+    if [ -f "/etc/sysctl.conf" ]; then
+        contents="$(cat /etc/systctl.conf | sed 's/net.ipv4.ip_unprivileged_port_start/d')"
+    fi
+    printf "%s\\n%s\\n" "${contents}" "net.ipv4.ip_unprivileged_port_start=1" >>/etc/sysctl.conf
+    sysctl --system
 
     # Configure firewalld
     # TODO: this is tailored for use with how Linode does it on CentOS atm.
@@ -542,7 +551,7 @@ _REMOTE_ACQUIRE_LOCK()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     local token="${1}"
@@ -551,7 +560,7 @@ _REMOTE_ACQUIRE_LOCK()
     local seconds="${1}"
     shift
 
-    if [ ! -d "${HOSTHOME}/pods" ]; then
+    if [ ! -d "${HOSTHOME}/pods" ] || [ ! -f "${HOSTHOME}/cluster-id.txt" ]; then
         PRINT "Host is not initialized." "error" 0
         return 1
     fi
@@ -587,7 +596,7 @@ _REMOTE_SET_COMMITCHAIN()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     local chain="${1}"
@@ -605,7 +614,7 @@ _REMOTE_RELEASE_LOCK()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     local token="${1}"
@@ -634,7 +643,7 @@ _REMOTE_GET_HOST_METADATA()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     local clusterID="$(cat "${HOSTHOME}/cluster-id.txt" 2>/dev/null)"
@@ -662,7 +671,7 @@ _REMOTE_UPLOAD_ARCHIVE()
     local HOSTHOME="${1}"
     shift
     if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
-        HOSTHOME="$(FILE_REALPATH "${HOME}/${HOSTHOME}")"
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
     fi
 
     # Indicate we are still busy

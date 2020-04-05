@@ -85,7 +85,8 @@ Using the superuser account we provision the host by installing podman, creating
 snt setup-host loadbalancer1
 ```
 
-Using our regular user we now init the host as part of the cluster by setting the `cluster-id.txt` file on the host. If you are using an existing host this step you will always want to run, otherwise sync will not work because it cannot recognize the host as being part of the cluster:  
+Using our regular user we now init the host as part of the cluster by setting the `cluster-id.txt` file on the host. If you are using an existing host this step you will always want to run, otherwise sync will not work because it cannot recognize the host as being part of the cluster.
+It will also install the image registry config.json file, if any.  
 ```sh
 snt init-host loadbalancer1
 ```

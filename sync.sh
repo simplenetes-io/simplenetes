@@ -977,6 +977,7 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
         cd "${pod}/release"
         local release=
         for release in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*' |cut -b3-); do
+            PRINT "Stepping into release: ${pod}/release/${release}" "debug"
             cd "${release}"
 
             PRINT "Update pod ${pod}:${release}" "info" 0
@@ -995,6 +996,8 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
                 cd ..  # Step out of "release" dir.
                 continue
             fi
+
+            PRINT "Update configs for: ${pod}/release/${release}" "debug"
 
             # Update the configs in the config dir
             cd "config"
@@ -1047,7 +1050,7 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
             cd ..  # Step out of "config" dir
             cd .. # Step of out of release version dir
         done
-        cd ..  # Step out of "release" dir.
+        cd ../..  # Step out of "pod/release" dir.
     done
     cd ../.. # Step out of archiveDir
 

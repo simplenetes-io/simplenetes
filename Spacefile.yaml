@@ -145,9 +145,11 @@ cluster:
 
         4_init_host:
             _info:
-                title: Using the regular user, initialize a host to be part of the cluster and configure the Daemon to manage it's pods
+                title: Using the regular user, initialize a host to be part of the cluster and upload the registry login config.json file (if any)
                 desc: |
                     This will set the cluster ID on the host, marking it as part of this cluster.
+                    It will upload the registry-config.json file either from the host dir or from the cluter bases dir, if present, and
+                    save it as ~/.docker/config.json. This will allow podman to login to private registries.
             _env:
                 - host:
                     title: Name of the host to initialize onto this cluster
@@ -455,6 +457,24 @@ delete_pod:
             desc: |
                 If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
         - RUN: DELETE_POD -- "${pod}"
+
+registry_config:
+    _info:
+        title: Generate registry login auth config.json file
+        desc: |
+            When using private image registries use this to generate docker style config.json files.
+            Podman uses the file when pulling from private registries.
+            If you already have an existing config.json file you want to use, place it in the cluster base dir
+            as registry-config.json.
+            
+            Put lines on stdin as "registry.url:username:password"
+    _env:
+        - host:
+            title: Host name to generate for, leave blank to generate default for cluster. Set to '-' to output to stdout
+            desc: |
+                If wanting to append to an existing config, you will need to do that manually by outputting this to stdout
+                and editing the json file by hand injecting the snippet.
+        - RUN: REGISTRY_CONFIG -- "${host}"
 
 pods:
     _info:

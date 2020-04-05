@@ -63,7 +63,7 @@ This will create a directory `my-laptop` which represents the Host. Inside the d
 The `-h` option dictates what directory is the `HOSTHOME` on the host. Any relative directory will be considered relative to the users `$HOME`.
 
 Now we need to "init" this host, so it belong to our cluster. This will create the `HOSTHOME` directory `${HOME}/cluster-host` on your laptop.
-
+It will also install the image registry config.json file, if any.
 
 From inside the `dev-cluster` dir, type:  
 ```sh
@@ -112,7 +112,7 @@ The configs can be edited after have been imported to the cluster project and th
 We import the pod template configs into the cluster below.  
 From inside the `dev-cluster` dir, type:  
 ```sh
-snt import-pod-config webserver
+snt import-config webserver
 ```
 
 Now the `config` dir from the webserver pod repo will have been copied into the cluster repo as `./\_config/webserver/config`.
@@ -320,7 +320,7 @@ We need to import the config templates from the pod because they are needed by `
 
 ```sh
 cd dev-cluster
-snt import-pod-config ingress
+snt import-config ingress
 ```
 
 Let's generate the haproxy ingress configuration for this cluster:  
@@ -359,7 +359,7 @@ snt attach-pod proxy@my-laptop
 
 ```sh
 cd dev-cluster
-snt import-pod-config proxy
+snt import-config proxy
 ```
 
 ```sh
