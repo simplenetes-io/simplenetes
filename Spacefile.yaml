@@ -100,7 +100,29 @@ cluster:
                 title: Expose ports to the public internet
                 desc: |
                     If no ports provided then the host will only be accessible on the internal network
-            - RUN: HOST_CREATE -- "${host}" "${jumphost}" "${expose}"
+            - hosthome:
+                title: home dir of cluster on host.
+            - hostaddress:
+                title: IP:PORT of host IP and SSH service port. Required.
+            - user:
+                title: Username of an existing user for which to run pods as
+                desc: |
+                    Only provide this is wanting to use the existing user instead of creating a new
+                    one when provisioning.
+            - userkey:
+                title: Keyfile of existing user.
+            - superuser:
+                title: Username of existing superuser
+            - superuserkey:
+                title: Keyfile of superuser
+            - internal:
+                title: Internal networks to allow traffic from internally
+                desc: |
+                    Default is:
+                    192.168.0.0/16 10.0.0.0/8 172.16.0.0/11
+            - routeraddress:
+                title: IP:PORT of the internal proxy
+            - RUN: HOST_CREATE -- "${host}" "${jumphost}" "${expose}" "${hosthome}" "${hostaddress}" "${user}" "${userkey}" "${superuser}" "${superuserkey}" "${internal}" "${routeraddress}"
 
 
     provision_host:
@@ -109,16 +131,16 @@ cluster:
             _info:
                 title: Using the root account, create the super user on a host
                 desc: |
-                    When having create a new host, we need to create a super user on that host to provision it.
+                    When creatsing a new host, we need to create a super user on that host to provision it.
                     Some cloud providers do create a superuser directly, some leave it at root account with password.
-                    If you already have a superuser, set the variable SUPERUSER=username in the host.env file and
-                    set the SUPERKEYFILE pointing to the keyfile of the superuser.
+                    If you already have a superuser, you should have provided the username and keyfile to the create-host command.
+                    The file host-superuser.env will be created which can be used to login to the host as superuser.
             _env:
                 - host:
                     title: Name of the host to create the super user on
-                - keyfile:
-                    title: If root account has a keyfile
-                - RUN: HOST_CREATE_SUPERUSER -- "${host}" "${keyfile}"
+                - rootkeyfile:
+                    title: Set this if the root account has a keyfile
+                - RUN: HOST_CREATE_SUPERUSER -- "${host}" "${rootkeyfile}"
 
         2_disable_root:
             _info:

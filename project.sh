@@ -348,6 +348,10 @@ _PRJ_HOST_SHELL()
     if [ "${superUser}" = "true" ]; then
         PRINT "Enter superuser shell of host ${host}" "info" 0
         local hostEnv="${CLUSTERPATH}/${host}/host-superuser.env"
+        if [ ! -f "${hostEnv}" ]; then
+            PRINT "host-superuser.env file does not exist for this host" "error" 0
+            return 1
+        fi
         _REMOTE_EXEC "${host}:${hostEnv}" "host_shell" "${useBash}"
     else
         PRINT "Enter shell of host ${host}" "info" 0
@@ -1649,18 +1653,22 @@ _PRJ_HOST_SETUP()
         return 1
     fi
 
-    # Load host env file and create a new temporary one
+    # Load host env file and create a new one
     hostEnv="${CLUSTERPATH}/${host}/host.env"
     hostEnv2="${CLUSTERPATH}/${host}/host-superuser.env"
+
     if [ ! -f "${hostEnv}" ]; then
         PRINT "${hostEnv} file does not exist." "error" 0
         return 1
     fi
 
+    if [ ! -f "${hostEnv2}" ]; then
+        PRINT "${hostEnv2} file does not exist." "error" 0
+        return 1
+    fi
+
     local USER=
     local KEYFILE=
-    local SUPERUSER=
-    local SUPERKEYFILE=
     local HOST=
     local PORT=
     local JUMPHOST=
@@ -1669,7 +1677,7 @@ _PRJ_HOST_SETUP()
 
     local value=
     local varname=
-    for varname in USER KEYFILE SUPERUSER SUPERKEYFILE HOST PORT JUMPHOST EXPOSE INTERNAL; do
+    for varname in USER KEYFILE HOST PORT JUMPHOST EXPOSE INTERNAL; do
         value="$(grep -m 1 "^${varname}=" "${hostEnv}")"
         value="${value#*${varname}=}"
         STRING_TRIM "value"
@@ -1683,16 +1691,6 @@ _PRJ_HOST_SETUP()
 
     if [ -z "${KEYFILE}" ]; then
         PRINT "KEYFILE not defined in host.env file" "error" 0
-        return 1
-    fi
-
-    if [ -z "${SUPERUSER}" ]; then
-        PRINT "SUPERUSER not defined in host.env file" "error" 0
-        return 1
-    fi
-
-    if [ -z "${SUPERKEYFILE}" ]; then
-        PRINT "SUPERKEYFILE not defined in host.env file" "error" 0
         return 1
     fi
 
@@ -1758,16 +1756,6 @@ _PRJ_HOST_SETUP()
         return 1
     fi
 
-    printf "%s\\n" "# Auto generated host.env file to be used with the Space ssh module.
-# You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
-
-HOSTHOME=/
-HOST=${HOST}
-USER=${SUPERUSER}
-KEYFILE=${SUPERKEYFILE}
-PORT=${PORT}
-JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
-
     local status=
     cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "setup_host" "${USER}" "${EXPOSE}" "${INTERNAL}"
     status="$?"
@@ -1784,92 +1772,109 @@ JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 # Looging in as root, create a new super user on the host.
 _PRJ_HOST_CREATE_SUPERUSER()
 {
-    SPACE_SIGNATURE="host keyfile:0"
+    SPACE_SIGNATURE="host rootkeyfile:0 [superuser superkeyfile]"
     SPACE_DEP="_REMOTE_EXEC PRINT _PRJ_DOES_HOST_EXIST SSH_KEYGEN FILE_REALPATH STRING_TRIM"
     SPACE_ENV="CLUSTERPATH"
 
     local host="${1}"
     shift
 
-    local keyfile="${1}"
+    local rootkeyfile="${1}"
     shift
+
+    local superUser="${1:-sntsuper}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local superKeyFile="${1:-id_rsa_super}"
+    shift $(($# > 0 ? 1 : 0))
 
     if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
         PRINT "Host ${host} does not exist." "error" 0
         return 1
     fi
 
-    # Load host env file and create a new temporary one
+    # Load host env file and create a new temporary one and the new superuser one.
     hostEnv="${CLUSTERPATH}/${host}/host.env"
     hostEnv2="${CLUSTERPATH}/${host}/.host-root.env"
+    hostEnv3="${CLUSTERPATH}/${host}/host-superuser.env"
+
     if [ ! -f "${hostEnv}" ]; then
         PRINT "${hostEnv} file does not exist." "error" 0
         return 1
     fi
 
-    local SUPERUSER=
-    local SUPERKEYFILE=
+    if [ -f "${hostEnv3}" ]; then
+        PRINT "${hostEnv3} file does already exist. The superuser should already be available." "error" 0
+        return 1
+    fi
+
     local HOST=
     local PORT=
     local JUMPHOST=
 
     local value=
     local varname=
-    for varname in SUPERUSER SUPERKEYFILE HOST PORT JUMPHOST; do
+    for varname in HOST PORT JUMPHOST; do
         value="$(grep -m 1 "^${varname}=" "${hostEnv}")"
         value="${value#*${varname}=}"
         STRING_TRIM "value"
         eval "${varname}=\"\${value}\""
     done
 
-    if [ -z "${SUPERUSER}" ]; then
-        PRINT "SUPERUSER not defined in host.env file" "error" 0
-        return 1
-    fi
-
-    if [ -z "${SUPERKEYFILE}" ]; then
-        PRINT "SUPERKEYFILE not defined in host.env file" "error" 0
-        return 1
-    fi
-
-    SUPERKEYFILE="$(cd "${CLUSTERPATH}/${host}" && FILE_REALPATH "${SUPERKEYFILE}")"
+    superKeyFile="$(cd "${CLUSTERPATH}/${host}" && FILE_REALPATH "${superKeyFile}")"
 
     # If keyfile does not exist, we create it.
-    if [ ! -f "${SUPERKEYFILE}" ]; then
-        PRINT "Create super user keyfile: ${SUPERKEYFILE}" "info" 0
-        if ! SSH_KEYGEN "${SUPERKEYFILE}"; then
+    if [ ! -f "${superKeyFile}" ]; then
+        PRINT "Create super user keyfile: ${superKeyFile}" "info" 0
+        if ! SSH_KEYGEN "${superKeyFile}"; then
             PRINT "Could not genereate keyfile" "error" 0
             return 1
         fi
     fi
 
-    local pubKey="${SUPERKEYFILE}.pub"
-    if [ ! -f "${SUPERKEYFILE}" ]; then
+    local pubKey="${superKeyFile}.pub"
+    if [ ! -f "${superKeyFile}" ]; then
         PRINT "Could not find ${pubKey} file" "error" 0
         return 1
     fi
 
-    # Create the temporary host.env file
-    printf "%s\\n" "HOSTHOME=/
+    # Create the temporary .host-root.env file
+    printf "%s\\n" "
 HOST=${HOST}
 USER=root
-KEYFILE=${keyfile}
+KEYFILE=${rootkeyfile}
 PORT=${PORT}
 JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 
     local status=
-    cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "create_superuser" "${SUPERUSER}"
+    cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "create_superuser" "${superUser}"
     status="$?"
-    if [ "${status}" -eq 0 ]; then
-        rm "${hostEnv2}"
-        return 0
-    fi
     rm "${hostEnv2}"
+    if [ "${status}" -ne 0 ]; then
+        PRINT "Could not create superuser." "error" 0
+        return "${status}"
+    fi
 
-    PRINT "Could not create super user." "error" 0
+    # Create the host-superuser.env file
+    printf "%s\\n" "# Auto generated host.env file which can be used with the Space ssh module.
+# You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
 
-    # Failed
-    return "${status}"
+## SSH specific variables
+# HOST is the public or private IP of the Host.
+# If using a JUMPHOST, then it is likely the internal IP, if not then it is the public IP.
+HOST=${HOST}
+
+# SSH port this Host is listening on.
+PORT=${PORT}
+
+# The user on the Host which will be running the pods in rootless mode. This should NOT be the root user.
+USER=${superUser}
+
+# The path to the SSH keyfile used for this user to login to this Host.
+KEYFILE=${superKeyFile}
+
+# Worker hosts are often not exposed to the public internet and to connect to them over SSH a JUMPHOST is needed.
+JUMPHOST=${JUMPHOST}" >"${hostEnv3}"
 }
 
 _PRJ_HOST_DISABLE_ROOT()
@@ -1886,62 +1891,20 @@ _PRJ_HOST_DISABLE_ROOT()
         return 1
     fi
 
-    # Load host env file and create a new temporary one
-    hostEnv="${CLUSTERPATH}/${host}/host.env"
-    hostEnv2="${CLUSTERPATH}/${host}/.host-superuser.env"
+    hostEnv="${CLUSTERPATH}/${host}/host-superuser.env"
+
     if [ ! -f "${hostEnv}" ]; then
         PRINT "${hostEnv} file does not exist." "error" 0
         return 1
     fi
 
-    local SUPERUSER=
-    local SUPERKEYFILE=
-    local HOST=
-    local PORT=
-    local JUMPHOST=
-
-    local value=
-    local varname=
-    for varname in SUPERUSER SUPERKEYFILE HOST PORT JUMPHOST; do
-        value="$(grep -m 1 "^${varname}=" "${hostEnv}")"
-        value="${value#*${varname}=}"
-        STRING_TRIM "value"
-        eval "${varname}=\"\${value}\""
-    done
-
-    if [ -z "${SUPERUSER}" ]; then
-        PRINT "SUPERUSER not defined in host.env file" "error" 0
-        return 1
-    fi
-
-    if [ -z "${SUPERKEYFILE}" ]; then
-        PRINT "SUPERKEYFILE not defined in host.env file" "error" 0
-        return 1
-    fi
-
-    SUPERKEYFILE="$(cd "${CLUSTERPATH}/${host}" && FILE_REALPATH "${SUPERKEYFILE}")"
-
-    if [ ! -f "${SUPERKEYFILE}" ]; then
-        PRINT "Super user keyfile is missing: ${SUPERKEYFILE}" "info" 0
-        return 1
-    fi
-
-    # Create the temporary host.env file
-    printf "%s\\n" "HOSTHOME=/
-HOST=${HOST}
-USER=${SUPERUSER}
-KEYFILE=${SUPERKEYFILE}
-PORT=${PORT}
-JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
-
     local status=
-    _REMOTE_EXEC "${host}:${hostEnv2}" "disable_root"
+    _REMOTE_EXEC "${host}:${hostEnv}" "disable_root"
     status="$?"
+    rm "${hostEnv2}"
     if [ "${status}" -eq 0 ]; then
-        rm "${hostEnv2}"
         return 0
     fi
-    rm "${hostEnv2}"
 
     PRINT "Could not disable root." "error" 0
 
@@ -1998,7 +1961,7 @@ _PRJ_HOST_INIT()
 
 _PRJ_HOST_CREATE()
 {
-    SPACE_SIGNATURE="host jumphost expose hostHome"
+    SPACE_SIGNATURE="hostName jumphost expose hostHome hostAddress user userKey superUser superUserKey internal routerAddress"
     SPACE_DEP="PRINT _PRJ_DOES_HOST_EXIST _PRJ_LOG_C STRING_TRIM STRING_ITEM_INDEXOF STRING_SUBST"
     SPACE_ENV="CLUSTERPATH"
 
@@ -2012,6 +1975,27 @@ _PRJ_HOST_CREATE()
     shift
 
     local hostHome="${1:-cluster-host}"
+    shift
+
+    local hostAddress="${1}"
+    shift
+
+    local user="${1}"
+    shift
+
+    local userKey="${1}"
+    shift
+
+    local superUser="${1}"
+    shift
+
+    local superUserKey="${1}"
+    shift
+
+    local internal="${1:-192.168.0.0/16 10.0.0.0/8 172.16.0.0/11}"
+    shift
+
+    local routerAddress="${1}"
     shift
 
     if _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
@@ -2046,35 +2030,113 @@ _PRJ_HOST_CREATE()
         expose="${expose}${expose:+ }22"
     fi
 
-    mkdir -p "${dir}"
+    if [ -n "${userKey}" ] || [ -n "${user}" ]; then
+        if [ -z "${user}" ]; then
+            PRINT "If providing a user key you must also provide the user name" "error" 0
+            return 1
+        fi
+        if [ -n "${userKey}" ] && [ ! -f "${userKey}" ]; then
+            PRINT "User key does not exist, remember to place it there" "warning" 0
+        fi
+    fi
 
-    printf "%s\\n" "# Auto generated host.env file to be used with the Space ssh module.
+    if [ -n "${superUserKey}" ] || [ -n "${superUser}" ]; then
+        if [ -z "${superUserKey}" ]; then
+            superUserKey="id_rsa_super"
+        fi
+        if [ -z "${superUser}" ]; then
+            PRINT "If providing a superUser key you must also provide the superUser name" "error" 0
+            return 1
+        fi
+        if [ ! -f "${superUserKey}" ]; then
+            PRINT "Superuser key does not exist, remember to place it there" "warning" 0
+        fi
+    fi
+
+    # Split address into IP and port
+    if [ -z "${hostAddress}" ]; then
+        PRINT "Host address must be provided. Set to 'local' for simulated host working directly on local disk" "error" 0
+        return 1
+    fi
+
+    local port="${hostAddress#*:}"
+    if [ "${port}" = "${hostAddress}" ]; then
+        port="22"
+    fi
+    port="${port:-22}"
+    hostAddress="${hostAddress%:*}"
+
+    if [ "${hostAddress}" = "local" ]; then
+        if [ -n "${superUser}" ]; then
+            PRINT "Superuser cannot be provided for a 'local' host" "error" 0
+            return 1
+        fi
+    fi
+
+    # TODO: check $internal to be valid.
+
+    # Create the host directory
+    mkdir -p "${dir}"
+    printf "%s\\n" "active" >"${dir}/host.state"
+
+    # Create the host.env file
+    printf "%s\\n" "# Auto generated host.env file which can be used with the Space ssh module.
 # You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host.env\".
+
+## SSH specific variables
+# HOST is the public or private IP of the Host.
+# If using a JUMPHOST, then it is likely the internal IP, if not then it is the public IP.
+HOST=${hostAddress}
+
+# SSH port this Host is listening on.
+PORT=${port}
+
+# The user on the Host which will be running the pods in rootless mode. This should NOT be the root user.
+USER=${user:-snt}
+
+# The path to the SSH keyfile used for this user to login to this Host.
+KEYFILE=${userKey:-id_rsa}
+
+# Worker hosts are often not exposed to the public internet and to connect to them over SSH a JUMPHOST is needed.
+JUMPHOST=${jumphost}
+
+## Simplenetes host configuration variables
+# Expose these ports to the public internet
+EXPOSE=${expose}
+
+# Networks for internal traffic, these are important and the settings depend on the subnets of your hosts.
+INTERNAL=${internal}
 
 # HOSTHOME is the directory on the host where this local host sync to.
 HOSTHOME=${hostHome}
-# ROUTERADDRESS is the the IP:port within the cluster where this host's Proxy service can be reached at. Most often localIP:2222.
-ROUTERADDRESS=
-# HOST is the public or private IP of the Host. If using a JUMPHOST, then it is likely the internal IP, of not the it is the public IP.
-HOST=
-# The user on the Host which will be running the pods in rootless mode. This should NOT be the root user.
-USER=snt
-# The path to the SSH keyfile used for this user on this Host.
-KEYFILE=./id_rsa
-# Expose these ports to the public internet
-EXPOSE=${expose}
-# The super user which can administer the host
-SUPERUSER=sntsuper
-# The keyfile of the super user
-SUPERKEYFILE=./id_rsa_super
-# SSH port this Host is listening on.
-PORT=22
-# Networks for internal traffic, these are important and the settings depend on the subnets of your hosts.
-INTERNAL=192.168.0.0/16 10.0.0.0/8 172.16.0.0/11
-# Worker hosts are often not exposed to the public internet and to connect to them over SSH a JUMPHOST is needed.
-JUMPHOST=${jumphost}" >"${dir}/host.env"
 
-    printf "%s\\n" "active" >"${dir}/host.state"
+# ROUTERADDRESS is the the IP:port within the cluster where this host's Proxy service can be reached at.
+# Most often localIP:2222.
+ROUTERADDRESS=${routerAddress}" >"${dir}/host.env"
+
+    # Possibly create the host-superuser.env file
+    if [ -n "${superUser}" ]; then
+        printf "%s\\n" "# Auto generated host.env file which can be used with the Space ssh module.
+# You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
+
+## SSH specific variables
+# HOST is the public or private IP of the Host.
+# If using a JUMPHOST, then it is likely the internal IP, if not then it is the public IP.
+HOST=${hostAddress}
+
+# SSH port this Host is listening on.
+PORT=${port}
+
+# The user on the Host which will be running the pods in rootless mode. This should NOT be the root user.
+USER=${superUser}
+
+# The path to the SSH keyfile used for this user to login to this Host.
+KEYFILE=${superUserKey}
+
+# Worker hosts are often not exposed to the public internet and to connect to them over SSH a JUMPHOST is needed.
+JUMPHOST=${jumphost}" >"${dir}/host-superuser.env"
+
+    fi
 
     PRINT "Host ${host} created" "info" 0
     _PRJ_LOG_C "CREATE_HOST ${host}"

@@ -24,7 +24,7 @@ CLUSTER_SYNC()
 
 HOST_CREATE()
 {
-    SPACE_SIGNATURE="host [jumphost expose hostHome]"
+    SPACE_SIGNATURE="host [jumphost expose hostHome hostAddress user userKey superUser superUserKey internal routerAddress]"
     SPACE_DEP="_PRJ_HOST_CREATE"
 
     local host="${1}"
@@ -39,7 +39,28 @@ HOST_CREATE()
     local hostHome="${1:-}"
     shift $(($# > 0 ? 1 : 0))
 
-    _PRJ_HOST_CREATE "${host}" "${jumpHost}" "${expose}" "${hostHome}"
+    local hostAddress="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local user="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local userKey="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local superUser="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local superUserKey="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local internal="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local routerAddress="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
+    _PRJ_HOST_CREATE "${host}" "${jumpHost}" "${expose}" "${hostHome}" "${hostAddress}" "${user}" "${userKey}" "${superUser}" "${superUserKey}" "${internal}" "${routerAddress}"
 }
 
 HOST_INIT()
@@ -406,27 +427,44 @@ USAGE()
     import-config pod
         Import config templates from pod repo into the cluster project
 
-    create-host host [-j jumpHost] [-e expose] [-h hostHome]
+    create-host host -a address [-j jumpHost -e expose -h hostHome -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]
         Create a host in the cluster repo by the name 'host'.
-        -j jumphost is an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
-            If jumphost is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead.
-        -e expose can be a comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
-        -h hostHome can be specified
+        -a host IP:PORT. (required)
+            If host is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead.
 
-    init-host host
-        Initialize a host to be part of the cluster and configure the Daemon to manage it's pods.
-        Also upload the registry-config.json file for the host. This command is idempotent and is safe to run multiple times.
+        -j jumphost (optional
+            is an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.)
+        -e expose (optional)
+            can be a comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
+        -h hostHome (optional)
+            can be specified as the host cluster home dir
+        -u username (optional)
+            If set then either the regulsr user already exists on the host or we just set the desired name of the regular user.
+        -k keyfile (optional)
+            If user is set and already exists on the host then also the keyfile needs to be set.
+        -s superusername (optional)
+            If set then this is an already existing superuser on the host. Some ISPs provide a superuser instead of root access when creating a VM.
+        -S superuserkeyfile (optional)
+            If superuser is set then also the keyfile can be set. If not set it defaults to 'id_rsa_super', which must be placed in the host directory.
+        -i internal (optional)
+            Networks which are considered local. Used for allowing hosts on the same network to connect.
+        -r routeraddress (optional)
+            The IP:PORT of the router proxy on the host.
+
+    create-superuser host [-k rootkeyfile]
+        Login as root on the host and create the super user.
+        rootkeyfile is optional, of not set then password is required to login as root.
+
+    disable-root host
+        Use the super user account to disable the root login on a host
 
     setup-host host
         Setup the host using the superuser
         Creates the regular user, installs podman, configures firewalld, etc.
 
-    create-superuser host [-k keyfile]
-        Login as root on the host and create the super user as defined in the host.env file.
-        rootkeyfile is optional, of not set then password is required to login as root.
-
-    disable-root host
-        Use the super user account to disable the root login on a host
+    init-host host
+        Initialize a host to be part of the cluster and configure the Daemon to manage it's pods.
+        Also upload the registry-config.json file for the host. This command is idempotent and is safe to run multiple times.
 
     ls-hosts [-a] [-s]
         List active and inactive hosts in this cluster project
@@ -736,12 +774,19 @@ _SNT_CMDLINE()
         local _out_j=
         local _out_e=
         local _out_h=
+        local _out_a=
+        local _out_u=
+        local _out_k=
+        local _out_s=
+        local _out_S=
+        local _out_i=
+        local _out_r=
         local _out_rest=
-        if ! _GETOPTS "" "j e r h" 1 1 "$@"; then
-            printf "Usage: snt create-host host [-j jumpHost] [-e expose [-h hostHome]]\\n" >&2
+        if ! _GETOPTS "" "j e r h a u k s S i r" 1 1 "$@"; then
+            printf "Usage: snt create-host host -a address [-j jumpHost -e expose -h hostHome -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]\\n" >&2
             return 1
         fi
-        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}" "${_out_h}"
+        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}" "${_out_h}" "${_out_a}" "${_out_u}" "${_out_k}" "${_out_s}" "${_out_S}" "${_out_i}" "${_out_r}"
     elif [ "${action}" = "init-host" ]; then
         local _out_f="false"
         local _out_rest=
@@ -764,7 +809,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "k" 1 1 "$@"; then
-            printf "Usage: snt create-superuser host [-k keyfile]\\n" >&2
+            printf "Usage: snt create-superuser host [-k rootkeyfile]\\n" >&2
             return 1
         fi
         HOST_CREATE_SUPERUSER "${_out_rest}" "${_out_k}"

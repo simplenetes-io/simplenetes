@@ -43,8 +43,7 @@ _REMOTE_EXEC()
     done
 
     if [ -z "${HOSTHOME}" ]; then
-        PRINT "HOSTHOME must be defined in ${hostEnv}." "error" 0
-        return 10
+        HOSTHOME="cluster-host"
     fi
 
     if [ "${JUMPHOST}" = "local" ]; then
