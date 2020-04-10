@@ -9393,7 +9393,7 @@ _PRJ_REGISTRY_CONFIG()
     local line=
     local comma=""
     lines="$(
-        while read line; do
+        while IFS='' read line; do
             local registry="${line%%:*}"
             local password="${line##*:}"
             local user="${line#*:}"
@@ -9787,7 +9787,7 @@ _PRJ_GEN_INGRESS_CONFIG2()
         protocol="${protocol#*-}"
         local frontendextra=""
         if [ "${protocol}" = "https" ]; then
-            frontendextra=" ssl crt /mnt/haproxy-certs"
+            frontendextra=" ssl crt /mnt/usercerts crt /mnt/autocerts"
         fi
         printf "\\nfrontend %s-%s\\n" "${bind}" "${protocol}"
         printf "    bind :%s%s\\n" "${bind}" "${frontendextra}"
@@ -12030,6 +12030,7 @@ _SSH_BUILD_COMMAND()
         fi
     fi
 
+
     if [ -z "${hosts}" ]; then
         PRINT "No SSHHOST provided." "error"
         return 1
@@ -12157,6 +12158,32 @@ _SSH_BUILD_COMMAND_HOSTFILE()
 {
     local _SPACE_NAME="_SSH_BUILD_COMMAND_HOSTFILE"
 
+    # Check if we are to override values of the final target host
+    # Only if no host was set, but other values were set do we override
+    # the values of the final destination host.
+    local overrideFlags=
+    local overridePort=
+    local overrideKeyfile=
+    local overrideUser=
+    if [ -z "${hosts}" ]; then
+        if [ -n "${flagses}" ]; then
+            overrideFlags="${flagses}"
+            flagses=""
+        fi
+        if [ -n "${keyfiles}" ]; then
+            overrideKeyfile="${keyfiles}"
+            keyfiles=""
+        fi
+        if [ -n "${ports}" ]; then
+            overridePort="${ports}"
+            ports=""
+        fi
+        if [ -n "${users}" ]; then
+            overrideUser="${users}"
+            users=""
+        fi
+    fi
+
     local hostEnvDir="${hostfile%/*}"
     local HOST=
     local USER=
@@ -12182,6 +12209,28 @@ _SSH_BUILD_COMMAND_HOSTFILE()
         done
 
         STRING_SUBST "FLAGS" ' ' ';' 1
+
+        # Check special case here. If user provided override values for final
+        # target host, we override them now.
+        if [ -n "${overrideFlags}" ]; then
+            FLAGS="${overrideFlags}"
+            overrideFlags=
+        fi
+
+        if [ -n "${overridePort}" ]; then
+            PORT="${overridePort}"
+            overridePort=
+        fi
+
+        if [ -n "${overrideKeyfile}" ]; then
+            KEYFILE="${overrideKeyfile}"
+            overrideKeyfile=
+        fi
+
+        if [ -n "${overrideUser}" ]; then
+            USER="${overrideUser}"
+            overrideUser=
+        fi
 
         if [ -n "${KEYFILE}" ]; then
             KEYFILE="$(FILE_REALPATH "${KEYFILE}" "${hostEnvDir}")"

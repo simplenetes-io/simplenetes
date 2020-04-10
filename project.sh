@@ -19,7 +19,7 @@ _PRJ_REGISTRY_CONFIG()
     local line=
     local comma=""
     lines="$(
-        while read line; do
+        while IFS='' read line; do
             local registry="${line%%:*}"
             local password="${line##*:}"
             local user="${line#*:}"
@@ -2743,7 +2743,7 @@ _PRJ_GEN_INGRESS_CONFIG2()
         protocol="${protocol#*-}"
         local frontendextra=""
         if [ "${protocol}" = "https" ]; then
-            frontendextra=" ssl crt /mnt/haproxy-certs"
+            frontendextra=" ssl crt /mnt/usercerts crt /mnt/autocerts"
         fi
         printf "\\nfrontend %s-%s\\n" "${bind}" "${protocol}"
         printf "    bind :%s%s\\n" "${bind}" "${frontendextra}"
