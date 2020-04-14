@@ -17,3 +17,12 @@ There are ways to configure around this, also the precautions about interfering 
 
 Q. How can I configure to run multiple proxies on the same host?
 Make the proxy pod listen to another port and configure each host.env so it's `ROUTERADDRESS` reflects the port change.
+
+Q. Can I run the daemon without systemd?
+Yes, you can run it as it is, if you want ramdisk then you need to run it as root.
+You can run it with other init systems too, the important thing is to have the equivalaent of systemd's `KillMode=process`, so that the pods are not killed if the daemon is restarted.
+
+Q. Why is my data lost when I rerun a pod or a container?
+Simplenetes pods have no concept of restarting. If a pod is stopped and started again it is a new instance of the pod and its containers, which means any data stored internally in containers is lost.
+To keep state between pod reruns (restarts) you will need to use a volume to store data in.
+Following this pattern will make it easier for you to upgrade pods since non temporary data is never expected to be stored inside any containers.
