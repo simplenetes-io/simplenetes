@@ -7,7 +7,7 @@ _REMOTE_EXEC()
 {
     SPACE_SIGNATURE="host action [args]"
     # This env variable can be baked in at compile time if we want this module to be standalone
-    SPACE_ENV="CLUSTERPATH REMOTE_PACK_RELEASEDATA=$ REMOTE_SET_COMMITCHAIN=$ REMOTE_ACQUIRE_LOCK=$ REMOTE_RELEASE_LOCK=$ REMOTE_GET_HOSTMETADATA=$ REMOTE_UPLOAD_ARCHIVE=$ REMOTE_UNPACK_ARCHIVE=$ REMOTE_INIT_HOST=$ REMOTE_HOST_SETUP=$ REMOTE_LOGS=$ REMOTE_DAEMON_LOG=$ REMOTE_CREATE_SUPERUSER=$ REMOTE_DISABLE_ROOT=$ REMOTE_SIGNAL=$ REMOTE_POD_STATUS=$ REMOTE_POD_SHELL=$ REMOTE_HOST_SHELL=$"
+    SPACE_ENV="CLUSTERPATH REMOTE_PACK_RELEASEDATA=$ REMOTE_SET_COMMITCHAIN=$ REMOTE_ACQUIRE_LOCK=$ REMOTE_RELEASE_LOCK=$ REMOTE_GET_HOSTMETADATA=$ REMOTE_UPLOAD_ARCHIVE=$ REMOTE_UNPACK_ARCHIVE=$ REMOTE_INIT_HOST=$ REMOTE_HOST_SETUP=$ REMOTE_LOGS=$ REMOTE_DAEMON_LOG=$ REMOTE_CREATE_SUPERUSER=$ REMOTE_DISABLE_ROOT=$ REMOTE_SIGNAL=$ REMOTE_ACTION=$ REMOTE_POD_STATUS=$ REMOTE_POD_SHELL=$ REMOTE_HOST_SHELL=$"
     SPACE_DEP="SSH PRINT STRING_TRIM"
 
     local host="${1}"
@@ -111,6 +111,11 @@ _REMOTE_EXEC()
         "signal")
             if [ -n "${REMOTE_SIGNAL}" ]; then
                 RUN="${REMOTE_SIGNAL}"
+            fi
+            ;;
+        "action")
+            if [ -n "${REMOTE_ACTION}" ]; then
+                RUN="${REMOTE_ACTION}"
             fi
             ;;
         "daemon-log")
@@ -229,7 +234,7 @@ _REMOTE_DAEMON_LOG()
     SPACE_SIGNATURE="[hosthome]"
 
     # TODO: add limits and time windows.
-    journalctl -u sntd
+    cat "/${HOME}/sntd.log"
 }
 
 _REMOTE_SIGNAL()
@@ -258,6 +263,34 @@ _REMOTE_SIGNAL()
     fi
 
     ${podFile} signal "$@"
+}
+
+_REMOTE_ACTION()
+{
+    # Arguments are actually not optional, but we do this so the exporting goes smoothly.
+    SPACE_SIGNATURE="[hosthome pod podVersion action]"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
+
+    local HOSTHOME="${1}"
+    shift
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
+    fi
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local podFile="${HOSTHOME}/pods/${pod}/release/${podVersion}/pod"
+
+    if [ ! -f "${podFile}" ]; then
+        PRINT "Missing pod: ${pod}:${podVersion}" "error" 0
+        return 1
+    fi
+
+    printf "%s\\n" "$*" >"${podFile}.action"
 }
 
 _REMOTE_HOST_SHELL()
@@ -404,7 +437,7 @@ _REMOTE_HOST_SETUP()
 {
     # Actually not optional arguments
     SPACE_SIGNATURE="[hosthome user ports internals]"
-    SPACE_DEP="PRINT OS_INSTALL_PKG _OS_CREATE_USER"
+    SPACE_DEP="PRINT OS_INSTALL_PKG _OS_CREATE_USER FILE_ROW_REMOVE FILE_ROW_PERSIST"
 
     local hosthome="${1}"
     shift
@@ -451,11 +484,13 @@ _REMOTE_HOST_SETUP()
     fi
 
     # Allow for users to bind from port 1 and updwards
-    local contents=""
-    if [ -f "/etc/sysctl.conf" ]; then
-        contents="$(cat /etc/systctl.conf | sed 's/net.ipv4.ip_unprivileged_port_start/d')"
-    fi
-    printf "%s\\n%s\\n" "${contents}" "net.ipv4.ip_unprivileged_port_start=1" >>/etc/sysctl.conf
+    #local contents=""
+    #if [ -f "/etc/sysctl.conf" ]; then
+        #contents="$(cat /etc/systctl.conf | sed 's/net.ipv4.ip_unprivileged_port_start/d')"
+    #fi
+    #printf "%s\\n%s\\n" "${contents}" "net.ipv4.ip_unprivileged_port_start=1" >>/etc/sysctl.conf
+    FILE_ROW_REMOVE "net.ipv4.ip_unprivileged_port_start=.*" "/etc/sysctl.conf"
+    FILE_ROW_PERSIST "net.ipv4.ip_unprivileged_port_start=1" "/etc/sysctl.conf"
     sysctl --system
 
     # Configure firewalld
@@ -513,14 +548,21 @@ _REMOTE_HOST_SETUP()
         firewall-cmd --reload
     fi
 
-    return
-
-    # TODO
-    # Download the simplenetes daemon
+    # Download the simplenetes daemon.
+    binaryUpdated="false"
+    local daemonFile="/bin/sntd"
+    if [ ! -f "${daemonFile}" ]; then
+        # TODO
+        PRINT "Downloading daemon binary" "info" 0
+        binaryUpdated="true"
+        return 0
+    else
+        PRINT "Daemon binary exists" "info" 0
+    fi
 
     # Make sure the bin is managed by systemd.
-    local file="/etc/systemd/system/simplenetes.service"
-    local unit="[Unit]
+    local file="/etc/systemd/system/sntd.service"
+        local unit="[Unit]
 Description=Simplenetes Daemon managing pods and ramdisks
 After=network-online.target
 
@@ -528,17 +570,35 @@ After=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root
-ExecStart=/bin/simplenetesd
+ExecStart=/bin/sntd -o /root/sntd.log
 Restart=always
+KillMode=process
 
 [Install]
 WantedBy=multi-user.target"
 
-    printf "%s\\n" "${unit}" >"${file}"
+    local exists="false"
+    if [ -f "${file}" ]; then
+        exists="true"
+    fi
+    if [ "${exists}" = "false" ] || ! (printf "%s\\n" "${unit}" |diff "${file}" "-" >/dev/null 2>&1); then
+        PRINT "Installing systemd service" "info" 0
 
-    #systemctl daemon-reload
-    systemctl enable simplenetes
-    systemctl start simplenetes
+        printf "%s\\n" "${unit}" >"${file}"
+        if [ "${exists}" = "true" ]; then
+            PRINT "Daemon reload" "info" 0
+            systemctl daemon-reload
+        fi
+
+        PRINT "Starting and enabling daemon service" "info" 0
+        systemctl enable sntd
+        systemctl restart sntd
+    else
+        PRINT "No change in systemd service" "info" 0
+        if [ "${binaryUpdated}" = "true" ]; then
+            systemctl restart sntd
+        fi
+    fi
 }
 
 _REMOTE_ACQUIRE_LOCK()

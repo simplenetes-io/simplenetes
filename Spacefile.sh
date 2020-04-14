@@ -273,6 +273,18 @@ DELETE_POD()
     _PRJ_DELETE_POD "$@"
 }
 
+RERUN_POD()
+{
+    SPACE_SIGNATURE="podTriple [containers]"
+    SPACE_DEP="_PRJ_ACTION_POD"
+
+    local podTriple="${1}"
+    shift
+
+    _PRJ_ACTION_POD "${podTriple}" "rerun" "$@"
+}
+
+
 # Set the pod.version.state file
 SET_POD_RELEASE_STATE()
 {
@@ -733,7 +745,7 @@ SNT_CMDLINE()
 _SNT_CMDLINE()
 {
     SPACE_SIGNATURE="[action args]"
-    SPACE_DEP="GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE DELETE_POD UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS POD_SHELL HOST_SHELL REGISTRY_CONFIG"
+    SPACE_DEP="GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE DELETE_POD UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RERUN_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS POD_SHELL HOST_SHELL REGISTRY_CONFIG"
     # It is important that CLUSTERPATH is in front of PODPATH, because PODPATH references the former.
     SPACE_ENV="CLUSTERPATH PODPATH"
 
@@ -940,11 +952,20 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 999 "$@"; then
-            printf "Usage: snt signal pod[:version][@host] [container]\\n" >&2
+            printf "Usage: snt signal pod[:version][@host] [containers]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
         SIGNAL_POD "$@"
+    elif [ "${action}" = "rerun" ]; then
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 999 "$@"; then
+            printf "Usage: snt rerun pod[:version][@host] [containers]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        RERUN_POD "$@"
     elif [ "${action}" = "delete" ]; then
         local _out_rest=
 
@@ -1018,7 +1039,7 @@ _SNT_CMDLINE()
             return 1
         fi
         set -- ${_out_rest}
-        POD_SHELL "${1}" "${_out_s}" "${_out_B}"
+        POD_SHELL "${1}" "${_out_c}" "${_out_B}"
     elif [ "${action}" = "host-shell" ]; then
         local _out_rest=
         local _out_s="false"

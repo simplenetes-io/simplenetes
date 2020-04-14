@@ -2743,11 +2743,13 @@ _REMOTE_HOST_SETUP()
     fi
 
     # Allow for users to bind from port 1 and updwards
-    local contents=\"\"
-    if [ -f \"/etc/sysctl.conf\" ]; then
-        contents=\"\$(cat /etc/systctl.conf | sed 's/net.ipv4.ip_unprivileged_port_start/d')\"
-    fi
-    printf \"%s\\n%s\\n\" \"\${contents}\" \"net.ipv4.ip_unprivileged_port_start=1\" >>/etc/sysctl.conf
+    #local contents=\"\"
+    #if [ -f \"/etc/sysctl.conf\" ]; then
+        #contents=\"\$(cat /etc/systctl.conf | sed 's/net.ipv4.ip_unprivileged_port_start/d')\"
+    #fi
+    #printf \"%s\\n%s\\n\" \"\${contents}\" \"net.ipv4.ip_unprivileged_port_start=1\" >>/etc/sysctl.conf
+    FILE_ROW_REMOVE \"net.ipv4.ip_unprivileged_port_start=.*\" \"/etc/sysctl.conf\"
+    FILE_ROW_PERSIST \"net.ipv4.ip_unprivileged_port_start=1\" \"/etc/sysctl.conf\"
     sysctl --system
 
     # Configure firewalld
@@ -2805,14 +2807,21 @@ _REMOTE_HOST_SETUP()
         firewall-cmd --reload
     fi
 
-    return
-
-    # TODO
-    # Download the simplenetes daemon
+    # Download the simplenetes daemon.
+    binaryUpdated=\"false\"
+    local daemonFile=\"/bin/sntd\"
+    if [ ! -f \"\${daemonFile}\" ]; then
+        # TODO
+        PRINT \"Downloading daemon binary\" \"info\" 0
+        binaryUpdated=\"true\"
+        return 0
+    else
+        PRINT \"Daemon binary exists\" \"info\" 0
+    fi
 
     # Make sure the bin is managed by systemd.
-    local file=\"/etc/systemd/system/simplenetes.service\"
-    local unit=\"[Unit]
+    local file=\"/etc/systemd/system/sntd.service\"
+        local unit=\"[Unit]
 Description=Simplenetes Daemon managing pods and ramdisks
 After=network-online.target
 
@@ -2820,17 +2829,35 @@ After=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root
-ExecStart=/bin/simplenetesd
+ExecStart=/bin/sntd -o /root/sntd.log
 Restart=always
+KillMode=process
 
 [Install]
 WantedBy=multi-user.target\"
 
-    printf \"%s\\n\" \"\${unit}\" >\"\${file}\"
+    local exists=\"false\"
+    if [ -f \"\${file}\" ]; then
+        exists=\"true\"
+    fi
+    if [ \"\${exists}\" = \"false\" ] || ! (printf \"%s\\n\" \"\${unit}\" |diff \"\${file}\" \"-\" >/dev/null 2>&1); then
+        PRINT \"Installing systemd service\" \"info\" 0
 
-    #systemctl daemon-reload
-    systemctl enable simplenetes
-    systemctl start simplenetes
+        printf \"%s\\n\" \"\${unit}\" >\"\${file}\"
+        if [ \"\${exists}\" = \"true\" ]; then
+            PRINT \"Daemon reload\" \"info\" 0
+            systemctl daemon-reload
+        fi
+
+        PRINT \"Starting and enabling daemon service\" \"info\" 0
+        systemctl enable sntd
+        systemctl restart sntd
+    else
+        PRINT \"No change in systemd service\" \"info\" 0
+        if [ \"\${binaryUpdated}\" = \"true\" ]; then
+            systemctl restart sntd
+        fi
+    fi
 }
 
 PRINT()
@@ -2983,6 +3010,60 @@ _OS_CREATE_USER()
     if [ \"\$?\" -gt 0 ]; then
         PRINT \"Could not create user: \${targetuser}.\" \"error\"
         return 1
+    fi
+}
+
+FILE_ROW_REMOVE()
+{
+    local _SPACE_NAME=\"FILE_ROW_REMOVE\"
+
+    local row=\"\${1}\"
+    shift
+
+    local file=\"\${1}\"
+    shift
+
+    PRINT \"Remove specific row from file \${file}: \${row}\" \"debug\"
+
+    grep -q \"^\${row}\\\$\" \"\${file}\" 2>/dev/null
+    local status=\"\$?\"
+    if [ \"\${status}\" = \"2\" ]; then
+        PRINT \"File not found: \${file}.\" \"debug\"
+    elif [ \"\${status}\" = \"1\" ]; then
+        PRINT \"Row does not exist\" \"debug\"
+    else
+        # Row does exist, remove all.
+        local tmpfile=\"\${file}.TemporarY\"
+        if mv \"\${file}\" \"\${tmpfile}\" && (grep -v \"^\${row}\\\$\" \"\${tmpfile}\" >\"\${file}\"; rm \"\${tmpfile}\"); then
+            # All good, fall through
+            :
+        else
+            PRINT \"Could not write to file\" \"debug\"
+            return 1
+        fi
+    fi
+}
+
+FILE_ROW_PERSIST()
+{
+    local _SPACE_NAME=\"FILE_ROW_PERSIST\"
+
+    local row=\"\${1}\"
+    shift
+
+    local file=\"\${1}\"
+    shift
+
+    PRINT \"Make sure that row exist in \${file}: \${row}\" \"debug\"
+
+    grep -q \"^\${row}\\\$\" \"\${file}\" 2>/dev/null
+    local status=\"\$?\"
+    if [ \"\${status}\" = \"2\" ]; then
+        PRINT \"File not found: \${file}, create it and add row.\" \"debug\"
+        FILE_APPEND_ROW \"\${row}\" \"\${file}\"
+    elif [ \"\${status}\" = \"1\" ]; then
+        PRINT \"Row does not exist, add row.\" \"debug\"
+        FILE_APPEND_ROW \"\${row}\" \"\${file}\"
     fi
 }
 
@@ -3186,29 +3267,6 @@ FILE_MKDIRP()
     fi
 }
 
-FILE_ROW_PERSIST()
-{
-    local _SPACE_NAME=\"FILE_ROW_PERSIST\"
-
-    local row=\"\${1}\"
-    shift
-
-    local file=\"\${1}\"
-    shift
-
-    PRINT \"Make sure that row exist in \${file}: \${row}\" \"debug\"
-
-    grep -q \"^\${row}\\\$\" \"\${file}\" 2>/dev/null
-    local status=\"\$?\"
-    if [ \"\${status}\" = \"2\" ]; then
-        PRINT \"File not found: \${file}, create it and add row.\" \"debug\"
-        FILE_APPEND_ROW \"\${row}\" \"\${file}\"
-    elif [ \"\${status}\" = \"1\" ]; then
-        PRINT \"Row does not exist, add row.\" \"debug\"
-        FILE_APPEND_ROW \"\${row}\" \"\${file}\"
-    fi
-}
-
 FILE_CHOWNR()
 {
     local _SPACE_NAME=\"FILE_CHOWNR\"
@@ -3278,16 +3336,6 @@ OS_USER_EXIST()
     fi
 }
 
-OS_COMMAND()
-{
-    local _SPACE_NAME=\"OS_COMMAND\"
-
-    local cmd=\"\${1}\"
-    shift
-
-    command -v \${cmd} >/dev/null
-}
-
 FILE_APPEND_ROW()
 {
     local _SPACE_NAME=\"FILE_APPEND_ROW\"
@@ -3318,6 +3366,16 @@ FILE_APPEND_ROW()
         PRINT \"Could not write to \${file}.\" \"error\"
         return 1
     fi
+}
+
+OS_COMMAND()
+{
+    local _SPACE_NAME=\"OS_COMMAND\"
+
+    local cmd=\"\${1}\"
+    shift
+
+    command -v \${cmd} >/dev/null
 }
 
 main()
@@ -3702,7 +3760,7 @@ _REMOTE_DAEMON_LOG()
     local _SPACE_NAME=\"_REMOTE_DAEMON_LOG\"
 
     # TODO: add limits and time windows.
-    journalctl -u sntd
+    cat \"/\${HOME}/sntd.log\"
 }
 
 main()
@@ -4836,6 +4894,315 @@ main()
     elif [ \"\${SPACE_MUTE_EXIT_MESSAGE}\" != \"1\" ] && [ \"\${SPACE_LOG_LEVEL}\" -ge 5 ]; then
         [ \"\${SPACE_LOG_ENABLE_COLORS:-1}\" = \"1\" ] && [ 5 -eq 3 ] && [ -t 2 ] && printf \"\033[32m\" >&2
         printf \"%s\n\" \"[DEBUG] Script exited with success (status \$_status) for node /_remote_plumbing/signal/\" >&2
+        [ \"\${SPACE_LOG_ENABLE_COLORS:-1}\" = \"1\" ] && [ 5 -eq 3 ] && [ -t 2 ] && printf \"\033[0m\" >&2
+        : # Important to reset status here.
+    fi
+}
+
+main \"\$@\""
+REMOTE_ACTION="#!/usr/bin/env sh
+# Script assembled and exported by:
+#     ___ ___  ___  ____ ____  ___ __ __
+#    / __/ _ \/ _ |/ ___/ __/ / __/ // /
+#   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
+#  /___/_/  /_/ |_\___/___(_)___/_//_/
+#  version: 1.3.0 | https://space.sh
+#
+# Node: /_remote_plumbing/action/
+# Simplenetes version 0.1
+# A set of commands used only for when compiling a release of this module into a standalone script file.
+# 
+
+set -u  # Will not allow for unset variables being used.
+
+SPACE_LOG_LEVEL=\"\${SPACE_LOG_LEVEL:-4}\"
+SPACE_LOG_ENABLE_COLORS=\"\${SPACE_LOG_ENABLE_COLORS:-1}\"
+SPACE_ASSERT_EXIT=\"\${SPACE_ASSERT_EXIT:-0}\"
+SPACE_MUTE_EXIT=\"\${SPACE_MUTE_EXIT:-0}\"
+SPACE_MUTE_EXIT_MESSAGE=\"\${SPACE_MUTE_EXIT_MESSAGE:-1}\"
+_REMOTE_ACTION()
+{
+    local _SPACE_NAME=\"_REMOTE_ACTION\"
+
+    local HOSTHOME=\"\${1}\"
+    shift
+    if [ \"\$(STRING_SUBSTR \"\${HOSTHOME}\" 0 1)\" != '/' ]; then
+        HOSTHOME=\"\$(FILE_REALPATH \"\${HOSTHOME}\" \"\${HOME}\")\"
+    fi
+
+    local pod=\"\${1}\"
+    shift
+
+    local podVersion=\"\${1}\"
+    shift
+
+    local podFile=\"\${HOSTHOME}/pods/\${pod}/release/\${podVersion}/pod\"
+
+    if [ ! -f \"\${podFile}\" ]; then
+        PRINT \"Missing pod: \${pod}:\${podVersion}\" \"error\" 0
+        return 1
+    fi
+
+    printf \"%s\\n\" \"\$*\" >\"\${podFile}.action\"
+}
+
+STRING_SUBSTR()
+{
+    local _SPACE_NAME=\"STRING_SUBSTR\"
+
+    # shellcheck disable=SC2034
+    local __sopriv=\"\${1}\"
+    shift
+
+    local __index=\"\${1}\"
+    shift
+
+    local __length=\"\${1}\"
+    shift
+
+    local __outvar=\"\${1:-}\"
+    shift \$(( \$# > 0 ? 1 : 0 ))
+
+    local __strlength=\"\${#__sopriv}\"
+
+    if [ \"\${__index}\" -lt 0 ]; then
+        __index=\$((__strlength+__index))
+    fi
+
+    if [ \"\${__index}\" -ge 0 ]; then
+        if [ \"\${__length}\" = \"\" ]; then
+            __length=\$((__strlength-__index))
+        fi
+
+        if [ \"\${__length}\" -lt 0 ]; then
+            __length=\$((__strlength-__index+__length))
+        fi
+
+        if [ \"\$((__index+__length))\" -le \"\${#__sopriv}\" ]; then
+            local __wildcard=
+            STRING_REPEAT \"?\" \"\${__index}\" \"\" \"__wildcard\"
+            local __substr=\"\${__sopriv#\${__wildcard}}\"
+            STRING_REPEAT \"?\" \"\$((\${#__substr}-__length))\" \"\" \"__wildcard\"
+            __substr=\"\${__substr%\${__wildcard}}\"
+            if [ -n \"\${__outvar}\" ]; then
+                eval \"\${__outvar}=\\\"\\\${__substr}\\\"\"
+            else
+                printf \"%s\\n\" \"\${__outvar}\"
+            fi
+            return 0
+        fi
+
+    fi
+
+    if [ -n \"\${__outvar}\" ]; then
+        eval \"\${__outvar}=\\\"\\\"\"
+    fi
+}
+
+FILE_REALPATH()
+{
+    local _SPACE_NAME=\"FILE_REALPATH\"
+
+    local file=\"\${1}\"
+    shift
+
+    local pwd=\"\${1:-\$PWD}\"
+
+    if [ \"\${file#/}\" != \"\${file}\" ]; then
+        # Already absolute
+        # Fall through for cleaning swipe
+        :
+    else
+        # Prepend the current directory.
+        file=\"\${pwd}/\${file}\"
+    fi
+
+    # Remove dots and act on double dots.
+    local count=
+    local item=
+    while true; do
+        local _ifs=\"\${IFS}\"
+        local IFS=\"/\"
+        STRING_ITEM_COUNT \"\${file}\" \"count\"
+        IFS=\${_ifs}
+        local index=-1
+        local keepIndexes=\"\"
+        while [ \"\${index}\" -lt \"\$((count-1))\" ]; do
+            index=\"\$((index+1))\"
+            local _ifs=\"\${IFS}\"
+            IFS=\"/\"
+            STRING_ITEM_GET \"\${file}\" \"\${index}\" \"item\"
+            IFS=\${_ifs}
+            if [ -z \"\${item}\" ]; then
+                # Discard it
+                continue
+            elif [ \"\${item}\" = \".\" ]; then
+                # Discard it
+                continue
+            elif [ \"\${item}\" = \"..\" ]; then
+                # Discard this one, and also the previous one
+                # Cut away last keep index
+                keepIndexes=\"\${keepIndexes%[ ]*}\"
+                continue
+            fi
+            # Keep this one. The space here is important in all cases due to how it is cut above.
+            keepIndexes=\"\${keepIndexes} \${index}\"
+        done
+        # Put together the file again
+        local file2=
+        for index in \${keepIndexes}; do
+            local _ifs=\"\${IFS}\"
+            IFS=\"/\"
+            STRING_ITEM_GET \"\${file}\" \"\${index}\" \"item\"
+            IFS=\${_ifs}
+            file2=\"\${file2}/\${item}\"
+        done
+        if [ \"\${file}\" = \"\${file2}\" ]; then
+            # We are done
+            file=\"\${file2}\"
+            break
+        fi
+        file=\"\${file2}\"
+    done
+    file=\"\${file:-/}\"
+
+    printf \"%s\\n\" \"\${file}\"
+}
+
+PRINT()
+{
+    local color=''
+    local header=''
+    [ \"\${3:-1}\" = 1 ] && {
+        local _SPACE_NAME=\"\${_SPACE_NAME:-anonymous}: \";
+    } || {
+        local _SPACE_NAME=\"\";
+    }
+
+    case \"\${2:-info}\" in
+        error)
+            if [ \"\${SPACE_LOG_LEVEL:-4}\" -lt 1 ]; then return; fi
+            header=\"[ERROR] \"; color=\"\033[31m\"
+            ;;
+        security)
+            if [ \"\${SPACE_LOG_LEVEL:-4}\" -lt 1 ]; then return; fi
+            header=\"[SEC]   \"; color=\"\033[35m\"
+            ;;
+        warning)
+            if [ \"\${SPACE_LOG_LEVEL:-4}\" -lt 2 ]; then return; fi
+            header=\"[WARN]  \"; color=\"\033[33m\"
+            ;;
+        ok)
+            if [ \"\${SPACE_LOG_LEVEL:-4}\" -lt 3 ]; then return; fi
+            header=\"[OK]    \"; color=\"\033[32m\"
+            ;;
+        info)
+            if [ \"\${SPACE_LOG_LEVEL:-4}\" -lt 4 ]; then return; fi
+            header=\"[INFO]  \"; color=\"\033[37m\"
+            ;;
+        debug)
+            if [ \"\${SPACE_LOG_LEVEL:-4}\" -lt 5 ]; then return; fi
+            header=\"[DEBUG] \"; color=\"\"
+            ;;
+        *)
+            return
+            ;;
+    esac
+    if [ \"\${SPACE_LOG_ENABLE_COLORS}\" = \"1\" ] && [ -t 2 ]; then
+        printf \"\${color}%s%s%s\033[0m\n\" \"\${header}\" \"\${_SPACE_NAME}\" \"\${1}\" >&2
+    else
+        printf \"%s%s%s\n\" \"\${header}\" \"\${_SPACE_NAME}\" \"\${1}\" >&2
+    fi
+}
+
+STRING_REPEAT()
+{
+    local _SPACE_NAME=\"STRING_REPEAT\"
+
+    local __string=\"\${1}\"
+    shift
+
+    local __count=\"\${1}\"
+    shift
+
+    local __separator=\"\${1}\"
+    shift
+
+    local __outvar=\"\${1}\"
+    shift
+
+    local __repeatedstring=\"\"
+    while [ \"\${__count}\" -gt 0 ]; do
+        __count=\$((__count-1))
+        __repeatedstring=\"\${__repeatedstring}\${__string}\"
+        if [ \"\${__count}\" -gt 0 ]; then
+            __repeatedstring=\"\${__repeatedstring}\${__separator}\"
+        fi
+    done
+
+    eval \"\${__outvar}=\\\"\\\${__repeatedstring}\\\"\"
+}
+
+STRING_ITEM_COUNT()
+{
+    local _SPACE_NAME=\"STRING_ITEM_COUNT\"
+
+    local __s=\"\${1}\"
+    shift
+
+    local __outvar=\"\${1}\"
+    shift
+
+    local __item=
+    local __count=0
+    for __item in \${__s}; do
+        __count=\$((__count+1))
+    done
+    eval \"\${__outvar}=\\\"\\\${__count}\\\"\"
+}
+
+STRING_ITEM_GET()
+{
+    local _SPACE_NAME=\"STRING_ITEM_GET\"
+
+    local __s=\"\${1}\"
+    shift
+
+    local __index=\"\${1}\"
+    shift
+
+    local __outvar=\"\${1}\"
+    shift
+
+    local __item=
+    local __count=0
+    for __item in \${__s}; do
+        if [ \"\${__count}\" -eq \"\${__index}\" ]; then
+            eval \"\${__outvar}=\\\"\\\${__item}\\\"\"
+            break
+        fi
+        __count=\$((__count+1))
+    done
+}
+
+main()
+{
+    _REMOTE_ACTION \"\$@\"
+
+    # Space will print exit status.
+    local _status=\$?
+    if [ \"\${_status}\" -ne \"\${SPACE_ASSERT_EXIT}\" ]; then
+        if [ \"\${SPACE_MUTE_EXIT_MESSAGE}\" != \"1\" ] && [ \"\${SPACE_LOG_LEVEL}\" -ge 1 ]; then
+            [ \"\${SPACE_LOG_ENABLE_COLORS:-1}\" = \"1\" ] && [ -t 2 ] && printf \"\033[31m\" >&2
+            printf \"%s\n\" \"[ERROR] Script exited with status \$_status for node /_remote_plumbing/action/\" >&2
+            [ \"\${SPACE_LOG_ENABLE_COLORS:-1}\" = \"1\" ] && [ -t 2 ] && printf \"\033[0m\" >&2
+        fi
+        if [ \"\${SPACE_MUTE_EXIT}\" != 1 ]; then
+            return \$((SPACE_ASSERT_EXIT == 0 ? _status : 1))
+        fi
+    elif [ \"\${SPACE_MUTE_EXIT_MESSAGE}\" != \"1\" ] && [ \"\${SPACE_LOG_LEVEL}\" -ge 5 ]; then
+        [ \"\${SPACE_LOG_ENABLE_COLORS:-1}\" = \"1\" ] && [ 5 -eq 3 ] && [ -t 2 ] && printf \"\033[32m\" >&2
+        printf \"%s\n\" \"[DEBUG] Script exited with success (status \$_status) for node /_remote_plumbing/action/\" >&2
         [ \"\${SPACE_LOG_ENABLE_COLORS:-1}\" = \"1\" ] && [ 5 -eq 3 ] && [ -t 2 ] && printf \"\033[0m\" >&2
         : # Important to reset status here.
     fi
@@ -6253,11 +6620,20 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 999 "$@"; then
-            printf "Usage: snt signal pod[:version][@host] [container]\\n" >&2
+            printf "Usage: snt signal pod[:version][@host] [containers]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
         SIGNAL_POD "$@"
+    elif [ "${action}" = "rerun" ]; then
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 999 "$@"; then
+            printf "Usage: snt rerun pod[:version][@host] [containers]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        RERUN_POD "$@"
     elif [ "${action}" = "delete" ]; then
         local _out_rest=
 
@@ -6331,7 +6707,7 @@ _SNT_CMDLINE()
             return 1
         fi
         set -- ${_out_rest}
-        POD_SHELL "${1}" "${_out_s}" "${_out_B}"
+        POD_SHELL "${1}" "${_out_c}" "${_out_B}"
     elif [ "${action}" = "host-shell" ]; then
         local _out_rest=
         local _out_s="false"
@@ -6843,6 +7219,16 @@ SIGNAL_POD()
     shift
 
     _PRJ_SIGNAL_POD "${podTriple}" "$@"
+}
+
+RERUN_POD()
+{
+    local _SPACE_NAME="RERUN_POD"
+
+    local podTriple="${1}"
+    shift
+
+    _PRJ_ACTION_POD "${podTriple}" "rerun" "$@"
 }
 
 RELEASE()
@@ -8466,13 +8852,13 @@ _PRJ_CLUSTER_IMPORT_POD_CFG()
     fi
 
     if [ -d "${clusterPodConfigDir}" ]; then
-        PRINT "cluster config for the pod '${pod}' already exists, will not overwrite" "error" 0
-        return 1
+        PRINT "Cluster config for the pod '${pod}' already exists, will overwrite in 10 seconds... Press ctrl-c to abort!" "warning" 0
+        sleep 10
     fi
 
     mkdir -p "${CLUSTERPATH}/_config"
 
-    if ! cp -r "${podConfigDir}" "${clusterPodConfigDir}"; then
+    if ! cp -r "${podConfigDir}/." "${clusterPodConfigDir}"; then
         PRINT "Unexpected disk failure importing configs to cluster project." "error" 0
         return 1
     fi
@@ -9082,6 +9468,50 @@ _PRJ_SIGNAL_POD()
     done
 }
 
+_PRJ_ACTION_POD()
+{
+    local _SPACE_NAME="_PRJ_ACTION_POD"
+
+    local podTriple="${1}"
+    shift
+
+    local pod=
+    local version=
+    local host=
+    if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
+        return 1
+    fi
+
+    local hosts=
+    if [ -n "${host}" ]; then
+        if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+            PRINT "Host ${host} does not exist." "error" 0
+            return 1
+        fi
+
+        hosts="${host}"
+    else
+        hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
+    fi
+    unset host
+
+    if [ -z "${hosts}" ]; then
+        PRINT "Pod '${pod}' is not attached to any host." "error" 0
+        return 1
+    fi
+
+    local podVersion=
+    local host=
+    for host in ${hosts}; do
+        if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
+            continue
+        fi
+        PRINT "Send action to ${pod}:${podVersion}@${host}: $@" "info" 0
+        _PRJ_ACTION_POD2 "${pod}" "${podVersion}" "$@"
+    done
+}
+
 _RELEASE()
 {
     local _SPACE_NAME="_RELEASE"
@@ -9339,9 +9769,8 @@ _PRJ_POD_SHELL()
         fi
 
         PRINT "Enter shell of ${pod}:${podVersion}@${host}" "info" 0
-        if ! _REMOTE_EXEC "${host}" "pod_shell" "${pod}" "${podVersion}" "${container}" "${useBash}"; then
-            PRINT "Could not enter pod ${pod}:${podVersion}@${host}" "error" 0
-        fi
+        _REMOTE_EXEC "${host}" "pod_shell" "${pod}" "${podVersion}" "${container}" "${useBash}"
+        # Error code passed on
     done
 }
 
@@ -9691,7 +10120,9 @@ _PRJ_EXTRACT_INGRESS()
             backendLine="errorfile ${errorfile}"
         else
             # proxy must be defined in /etc/hosts to the IP where the proxy process is listening.
-            backendLine="server clusterPort-${clusterport} proxy:${clusterport} send-proxy"
+            #backendLine="server clusterPort-${clusterport} proxy:${clusterport} send-proxy"
+            # TODO: disable send-proxy to test without proxy
+            backendLine="server clusterPort-${clusterport} proxy:${clusterport}"
         fi
 
         local backendFile="${tmpDir}/${hash}-${protocol}_${type}.backend"
@@ -10610,6 +11041,11 @@ _REMOTE_EXEC()
                 RUN="${REMOTE_SIGNAL}"
             fi
             ;;
+        "action")
+            if [ -n "${REMOTE_ACTION}" ]; then
+                RUN="${REMOTE_ACTION}"
+            fi
+            ;;
         "daemon-log")
             if [ -n "${REMOTE_DAEMON_LOG}" ]; then
                 RUN="${REMOTE_DAEMON_LOG}"
@@ -11148,6 +11584,29 @@ _PRJ_SIGNAL_POD2()
     fi
 
     PRINT "Could not signal pod on host." "error" 0
+
+    # Failed
+    return "${status}"
+}
+
+_PRJ_ACTION_POD2()
+{
+    local _SPACE_NAME="_PRJ_ACTION_POD2"
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local status=
+    _REMOTE_EXEC "${host}" "action" "${pod}" "${podVersion}" "$@"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
+
+    PRINT "Could not send action to pod on host." "error" 0
 
     # Failed
     return "${status}"

@@ -20,6 +20,7 @@ _env:
     - REMOTE_LOGS:
     - REMOTE_POD_STATUS:
     - REMOTE_SIGNAL:
+    - REMOTE_ACTION:
     - REMOTE_DAEMON_LOG:
     - REMOTE_CREATE_SUPERUSER:
     - REMOTE_DISABLE_ROOT:
@@ -478,6 +479,7 @@ delete_pod:
             title: The name (and version) of the pod, as pod[:version][@host]
             desc: |
                 If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+                If host is omitted then delete for all hosts it is attached to.
         - RUN: DELETE_POD -- "${pod}"
 
 registry_config:
@@ -497,6 +499,23 @@ registry_config:
                 If wanting to append to an existing config, you will need to do that manually by outputting this to stdout
                 and editing the json file by hand injecting the snippet.
         - RUN: REGISTRY_CONFIG -- "${host}"
+
+rerun:
+    _info:
+        title: Rerun a pod or specific containers in a pod
+        desc: |
+            If a pod is in the running state this command can rerun the full pod.
+            A rerun is a total tear down of the pod and all containers and a recreation and restart.
+            Simplenetes has no concept of restarting/resuming pods/containers.
+            A rerun stops, removes and runs the pod/containers as brand new instances.
+            If containers are provided as arguments then only those container(s) are rerun.
+    _env:
+        - pod:
+            title: The name (and version) of the pod, as pod[:version][@host]
+            desc: |
+                If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+                If host is omitted then rerun for all hosts it is attached to.
+        - RUN: RERUN_POD -- "${pod}" ${containers}
 
 pods:
     _info:
@@ -566,6 +585,9 @@ _remote_plumbing:
     signal:
         _env:
             - RUN: _REMOTE_SIGNAL -- "$@"
+    action:
+        _env:
+            - RUN: _REMOTE_ACTION -- "$@"
     pod_status:
         _env:
             - RUN: _REMOTE_POD_STATUS -- "$@"

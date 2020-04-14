@@ -409,9 +409,8 @@ _PRJ_POD_SHELL()
         fi
 
         PRINT "Enter shell of ${pod}:${podVersion}@${host}" "info" 0
-        if ! _REMOTE_EXEC "${host}" "pod_shell" "${pod}" "${podVersion}" "${container}" "${useBash}"; then
-            PRINT "Could not enter pod ${pod}:${podVersion}@${host}" "error" 0
-        fi
+        _REMOTE_EXEC "${host}" "pod_shell" "${pod}" "${podVersion}" "${container}" "${useBash}"
+        # Error code passed on
     done
 }
 
@@ -937,10 +936,80 @@ _PRJ_SET_POD_RELEASE_STATE()
     done
 }
 
+_PRJ_ACTION_POD()
+{
+    SPACE_SIGNATURE="podTriple action"
+    SPACE_DEP="_PRJ_LIST_ATTACHEMENTS PRINT _PRJ_DOES_HOST_EXIST _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE _PRJ_ACTION_POD2"
+    SPACE_ENV="CLUSTERPATH"
+
+    local podTriple="${1}"
+    shift
+
+    local pod=
+    local version=
+    local host=
+    if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
+        return 1
+    fi
+
+    local hosts=
+    if [ -n "${host}" ]; then
+        if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+            PRINT "Host ${host} does not exist." "error" 0
+            return 1
+        fi
+
+        hosts="${host}"
+    else
+        hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
+    fi
+    unset host
+
+    if [ -z "${hosts}" ]; then
+        PRINT "Pod '${pod}' is not attached to any host." "error" 0
+        return 1
+    fi
+
+    local podVersion=
+    local host=
+    for host in ${hosts}; do
+        if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
+            continue
+        fi
+        PRINT "Send action to ${pod}:${podVersion}@${host}: $@" "info" 0
+        _PRJ_ACTION_POD2 "${pod}" "${podVersion}" "$@"
+    done
+}
+
+_PRJ_ACTION_POD2()
+{
+    SPACE_SIGNATURE="pod podVersion action"
+    SPACE_DEP="_REMOTE_EXEC PRINT"
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local status=
+    _REMOTE_EXEC "${host}" "action" "${pod}" "${podVersion}" "$@"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
+
+    PRINT "Could not send action to pod on host." "error" 0
+
+    # Failed
+    return "${status}"
+}
+
 _PRJ_SIGNAL_POD()
 {
     SPACE_SIGNATURE="podTriple [container]"
-    SPACE_DEP="_PRJ_LIST_ATTACHEMENTS PRINT _PRJ_DOES_HOST_EXIST _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE _PRJ_SIGNAL_POD2"
+    SPACE_DEP="_PRJ_LIST_ATTACHEMENTS PRINT _PRJ_DOES_HOST_EXIST _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE _PRJ_SIGNAL_POD2 _PRJ_GET_POD_RELEASE_STATE"
     SPACE_ENV="CLUSTERPATH"
 
     local podTriple="${1}"
@@ -1479,13 +1548,13 @@ _PRJ_CLUSTER_IMPORT_POD_CFG()
     fi
 
     if [ -d "${clusterPodConfigDir}" ]; then
-        PRINT "cluster config for the pod '${pod}' already exists, will not overwrite" "error" 0
-        return 1
+        PRINT "Cluster config for the pod '${pod}' already exists, will overwrite in 10 seconds... Press ctrl-c to abort!" "warning" 0
+        sleep 10
     fi
 
     mkdir -p "${CLUSTERPATH}/_config"
 
-    if ! cp -r "${podConfigDir}" "${clusterPodConfigDir}"; then
+    if ! cp -r "${podConfigDir}/." "${clusterPodConfigDir}"; then
         PRINT "Unexpected disk failure importing configs to cluster project." "error" 0
         return 1
     fi
@@ -3036,7 +3105,9 @@ _PRJ_EXTRACT_INGRESS()
             backendLine="errorfile ${errorfile}"
         else
             # proxy must be defined in /etc/hosts to the IP where the proxy process is listening.
-            backendLine="server clusterPort-${clusterport} proxy:${clusterport} send-proxy"
+            #backendLine="server clusterPort-${clusterport} proxy:${clusterport} send-proxy"
+            # TODO: disable send-proxy to test without proxy
+            backendLine="server clusterPort-${clusterport} proxy:${clusterport}"
         fi
 
         local backendFile="${tmpDir}/${hash}-${protocol}_${type}.backend"
