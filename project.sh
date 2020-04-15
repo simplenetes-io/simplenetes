@@ -2805,7 +2805,7 @@ _PRJ_GEN_INGRESS_CONFIG2()
     fi
 
     # For all .frontend files,
-    # sort rows on importance (first column) desc,
+    # sort rows on weight (first column) desc,
     # create frontend line in haproxy.cfg with bind and possble ssl cert params.
     # create a rule for each criterion and use hash as backend
     local frontend=
@@ -2890,7 +2890,7 @@ _PRJ_EXTRACT_INGRESS()
     while [ "${out_conf_lineno}" -gt -1 ]; do
         rule_count=$((rule_count+1))
         local ingress=
-        local importance=
+        local weight=
         local bind=
         local protocol=
         local host=
@@ -2902,7 +2902,7 @@ _PRJ_EXTRACT_INGRESS()
         local redirect_location=
         local redirect_prefix=
         local errorfile=
-        CONF_READ "${ingressConf}" "ingress importance bind protocol clusterport host path path_end path_beg redirect_to_https redirect_location redirect_prefix errorfile"
+        CONF_READ "${ingressConf}" "ingress weight bind protocol clusterport host path path_end path_beg redirect_to_https redirect_location redirect_prefix errorfile"
         if [ -n "${bind}" ] && [ -n "${protocol}" ]; then
             # Do nothing, fall through
             :
@@ -3079,16 +3079,16 @@ _PRJ_EXTRACT_INGRESS()
             type="server"
         fi
 
-        # Take hash on bind, protocol, criterions and importance.
+        # Take hash on bind, protocol, criterions and weight.
         # This is to uniquely identify and group together backends which have the exact same rules and frontend.
         local hash=
-        if ! STRING_HASH "${bind}-${protocol}_${type}-${importance}-${criteria}" "hash"; then
+        if ! STRING_HASH "${bind}-${protocol}_${type}-${weight}-${criteria}" "hash"; then
             return 1
         fi
 
         local backendName="${hash}"
-        # Will get sorted on importance when generating config
-        local frontendmatch="${importance} ${backendName}"
+        # Will get sorted on weight when generating config
+        local frontendmatch="${weight} ${backendName}"
         # Check in frontend file if hash exists, else add it.
         FILE_ROW_PERSIST "${frontendmatch}" "${frontendfile}"
         local aclfile="${frontendfile}.${backendName}"
