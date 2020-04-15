@@ -50,12 +50,12 @@ You can change the cluster ID at this point directly in `cluster-id.txt`, but do
 Now, let's create a Host which is not a Virtual Machine but instead refers to our laptop, the second argument "local" states that this is a local disk host  
 ```sh
 cd dev-cluster
-snt create-host my-laptop -j local -h cluster-host
+snt create-host my-laptop -a local -h cluster-host
 ```
 This will create a directory `my-laptop` which represents the Host. Inside the directory there will be two files: 
 
     - `host.env`, a key-value file containg the variables needed to connec to to the host.
-        The variable `HOSTHOME` dictates where on the Host files will get copied to when syncing the cluster repo with the remote cluster. For hosts which have JUMPHOST=local this is the directory on your laptop to where pods will get synced.
+        The variable `HOSTHOME` dictates where on the Host files will get copied to when syncing the cluster repo with the remote cluster. For hosts which have HOST=local this is the directory on your laptop to where pods will get synced.
         This means that if simulating many Hosts on the same laptop they will need different HOSTHOME settings.
     - `host.state`, a simple file which can contain the words `active`, `inactive` or `disabled`, and tells Simplenetes the state of this Host.
         A disabled host is ignored, an inactive host is still being managed by `snt` but will not be part of the ingress configuration.

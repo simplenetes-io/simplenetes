@@ -398,7 +398,7 @@ _REMOTE_POD_STATUS()
 _REMOTE_LOGS()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
-    SPACE_SIGNATURE="[hosthome pod podVersion timestamp limit streams]"
+    SPACE_SIGNATURE="[hosthome pod podVersion timestamp limit streams containers]"
     SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
@@ -429,7 +429,7 @@ _REMOTE_LOGS()
         return 1
     fi
 
-    ${podFile} logs -l "${limit}" -t "${timestamp}" -s "${streams}"
+    ${podFile} logs -l "${limit}" -t "${timestamp}" -s "${streams}" "$@"
 }
 
 # Public key of new user must come on stdin

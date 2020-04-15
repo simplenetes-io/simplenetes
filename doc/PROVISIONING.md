@@ -68,7 +68,9 @@ If your cloud provider creates a superuser for you then set that superuser below
 
 ```
 # Create the loadbalancer host
-snt create-host loadbalancer1 -a <IPa> [-s superuser]
+# Since the address given is a public IP we need to manually provide the internalIP for the router address as -r.
+# For hosts which are internal the router IP is assumed to be the same as the host IP.
+snt create-host loadbalancer1 -a <IPa> [-s superuser] -r internalIP:32767
 
 # Create a worker host, using the loadbalancer1 as jumphost
 snt create-host worker1 -j "../loadbalancer1" -a <IPb> [-s superuser]

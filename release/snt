@@ -2183,10 +2183,14 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
             PRINT \"Stepping into release: \${pod}/release/\${release}\" \"debug\"
             cd \"\${release}\"
 
-            PRINT \"Update pod \${pod}:\${release}\" \"info\" 0
+            PRINT \"Processing pod \${pod}:\${release}\" \"info\" 0
 
             # Move sh and state files inside release dir
             local dir=\"\${livePods}/\${pod}/release/\${release}\"
+            local releaseExists=\"false\"
+            if [ -d \"\${dir}\" ]; then
+                releaseExists=\"true\"
+            fi
             mkdir -p \"\${dir}\"
             local file=
             for file in \$(find . -mindepth 1 -maxdepth 1 -type f -not -path './.*' |cut -b3-); do
@@ -2199,8 +2203,6 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
                 cd ..  # Step out of \"release\" dir.
                 continue
             fi
-
-            PRINT \"Update configs for: \${pod}/release/\${release}\" \"debug\"
 
             # Update the configs in the config dir
             cd \"config\"
@@ -2216,7 +2218,7 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
                 local chksumFile=\"\${dir}/\${config}.txt\"
                 # NOTE: we could make the resume more clever by deciding on this when starting. Samll risk now is that there's a timeout on update and another update comes in and \"resumes\" when it should reset.
                 local isResumed=\"0\"
-                if [ ! -f \"\${chksumFile}\" ]; then
+                if [ \"\${releaseExists}\" = \"true\" ] && [ ! -f \"\${chksumFile}\" ]; then
                     # This means that this unpacking has been resumed and we
                     # should not delete the target files (again).
                     PRINT \"Resuming unpacking of pod config \${pod}:\${release}:\${config}\" \"info\" 0
@@ -3467,7 +3469,7 @@ _REMOTE_LOGS()
         return 1
     fi
 
-    \${podFile} logs -l \"\${limit}\" -t \"\${timestamp}\" -s \"\${streams}\"
+    \${podFile} logs -l \"\${limit}\" -t \"\${timestamp}\" -s \"\${streams}\" \"\$@\"
 }
 
 STRING_SUBSTR()
@@ -6351,15 +6353,16 @@ USAGE()
     get-host-state host
         Get the state of a host
 
-    logs pod[:version][@host] [-t timestamp] [-l limit] [-s stdout|stderr]
+    logs pod[:version][@host] [containers] [-t timestamp] [-l limit] [-s stdout|stderr]
         Get logs for a pod on one or all attached hosts.
         If version is left out the 'latest' version is searched for.
         If host is left out then get logs for all attached hosts.
+        If containers are left out then get logs for all containers in pod.
         -t timestamp is UNIX timestamp to get from, 0 get's all.
-        -l limit is the maximum number of lines to get, negative gets from bottom (newest)
+        -l limit is the maximum number of lines to get, negative gets from bottom (newest). 0 means no limit (default).
         -s streams is to get stdout, stderr or both, as: -s stdout | -s stderr | -s stdout,stderr (default)
 
-    signal pod[:version][@host] [container]
+    signal pod[:version][@host] [containers]
         Signal a pod on a specific host or on all attached hosts.
         Optionally specify which containers to signal, defualt is all containers in the pod.
 
@@ -6380,13 +6383,12 @@ USAGE()
     daemon-log [host]
         Get the daemon log
 
-    pod-shell pod[:version][@host] [-c container] [-B]
+    pod-shell pod[:version][@host] [container] [-B]
         Step into a shell inside a container of a pod.
         If version is left out the 'latest' version is searched for.
         If host is left out then enter the container on each host, in sequential order.
-        -c option states the name of the container to enter.
-           If not set then the last container of the pod is entered (as defined in the pod.yaml).
-        -B set to force the use of bash as shell, otherwise uses sh.
+        Optionally give the container to enter, if not set then the last container of the pod is entered (order as defined in the pod.yaml).
+        -B set to force the use of bash as shell, otherwise use sh.
 
     host-shell host [-s] [-B]
         Step into a shell inside a specific host.
@@ -6649,8 +6651,8 @@ _SNT_CMDLINE()
         local _out_l="0"
         local _out_s="stdout,stderr"
 
-        if ! _GETOPTS "" "t l s" 1 1 "$@"; then
-            printf "Usage: snt logs pod[:version][@host] [-t timestamp] [-l limit] [-s streams]\\n" >&2
+        if ! _GETOPTS "" "t l s" 1 999 "$@"; then
+            printf "Usage: snt logs pod[:version][@host] [containers] [-t timestamp] [-l limit] [-s streams]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -6699,15 +6701,14 @@ _SNT_CMDLINE()
         RELEASE "${_out_rest}" "${_out_m}" "${_out_p}" "${_out_f}"
     elif [ "${action}" = "pod-shell" ]; then
         local _out_rest=
-        local _out_c=""
         local _out_B="false"
 
-        if ! _GETOPTS "B" "c" 1 1 "$@"; then
-            printf "Usage: snt pod-shell pod[:version][@host] [-c container] [-B]\\n" >&2
+        if ! _GETOPTS "B" "" 1 2 "$@"; then
+            printf "Usage: snt pod-shell pod[:version][@host] [container] [-B]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
-        POD_SHELL "${1}" "${_out_c}" "${_out_B}"
+        POD_SHELL "${_out_B}" "$@"
     elif [ "${action}" = "host-shell" ]; then
         local _out_rest=
         local _out_s="false"
@@ -7259,16 +7260,10 @@ POD_SHELL()
 {
     local _SPACE_NAME="POD_SHELL"
 
-    local podTriple="${1}"
+    local useBash="${1:-false}"
     shift
 
-    local container="${1:-}"
-    shift $(($# > 0 ? 1 : 0))
-
-    local useBash="${1:-false}"
-    shift $(($# > 0 ? 1 : 0))
-
-    _PRJ_POD_SHELL "${podTriple}" "${container}" "${useBash}"
+    _PRJ_POD_SHELL "${useBash}" "$@"
 }
 
 HOST_SHELL()
@@ -7672,7 +7667,8 @@ _PRJ_GET_POD_LOGS()
             continue
         fi
 
-        _PRJ_GET_POD_LOGS2 "${host}" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}"
+        PRINT "Get logs for ${pod}:${podVersion}@${host} $*" "info" 0
+        _PRJ_GET_POD_LOGS2 "${host}" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "$@"
     done
 }
 
@@ -8674,7 +8670,7 @@ _PRJ_HOST_CREATE()
     local internal="${1:-192.168.0.0/16 10.0.0.0/8 172.16.0.0/11}"
     shift
 
-    local routerAddress="${1}"
+    local routerAddress="${1:-$host:32767}"
     shift
 
     if _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
@@ -8790,7 +8786,8 @@ INTERNAL=${internal}
 HOSTHOME=${hostHome}
 
 # ROUTERADDRESS is the the IP:port within the cluster where this host's Proxy service can be reached at.
-# Most often localIP:2222.
+# Most often localIP:32767.
+# These addresses will be aggregated and placed and the hosts so that the proxy can find the list.
 ROUTERADDRESS=${routerAddress}" >"${dir}/host.env"
 
     # Possibly create the host-superuser.env file
@@ -8977,12 +8974,16 @@ _SYNC_RUN()
     fi
 
     # Get the cluster metadata for each host.
+    # TODO: parallelize this
     local host=
     local tmpFile=
     local tuple=
     for tuple in ${list}; do
         host="${tuple%:*}"
         tmpFile="${tuple#*:}"
+        if [ "${quite}" != "true" ]; then
+            PRINT "Downloading metadata from host ${host}" "info" 0
+        fi
         local hostClusterMeta=
         if ! hostClusterMeta="$(_SYNC_GET_METADATA "${host}")"; then
             PRINT "Could not communicate with host: ${host}. If this host is to be out of rotation first disable it, if this is a temporary hickup in the network run this command again in a while." "error" 0
@@ -9044,6 +9045,7 @@ _SYNC_RUN()
     unset host
 
     # Get a lock on all hosts.
+    # TODO: parallelize this
     local randomToken="$(awk 'BEGIN{min=1;max=65535;srand(); print int(min+rand()*(max-min+1))}')"
     local lockedHosts=""
     local host=
@@ -9052,6 +9054,9 @@ _SYNC_RUN()
     for tuple in ${list}; do
         host="${tuple%:*}"
         tmpFile="${tuple#*:}"
+        if [ "${quite}" != "true" ]; then
+            PRINT "Acquire lock on host ${host}" "info" 0
+        fi
         if ! _SYNC_ACQUIRE_LOCK "${host}" "${randomToken}" 2>>"${tmpFile}"; then
             PRINT "Could not acquire lock on host ${host}." "error" 0
             _PRJ_LOG_C "SYNC_LOCK_ACQUIRE_ERROR token:${randomToken} host:${host}"
@@ -9075,6 +9080,9 @@ _SYNC_RUN()
     ## If a host fails then this sync should be run again or that host should be taken out of rotation.
     ## Syncs are alwaus idempotent, can be run multiple times.
 
+    if [ "${quite}" != "true" ]; then
+        PRINT "Init sync..." "info" 0
+    fi
 
     local timeout="$(($(date +%s)+1200))"
     local pid=
@@ -9085,7 +9093,7 @@ _SYNC_RUN()
     for tuple in ${list}; do
         host="${tuple%:*}"
         tmpFile="${tuple#*:}"
-        if ! pid="$(_SYNC_RUN2 "${host}" "${gitCommitChain}" 2>"${tmpFile}")"; then
+        if ! pid="$(_SYNC_RUN2 "${host}" "${gitCommitChain}" "${tmpFile}")"; then
             PRINT "Could not spawn process, aborting. Sync might now be in a halfway state, you should rerun this sync when possible." "error" 0
             # Make it kill any processes immediately.
             timeout=0
@@ -9126,6 +9134,17 @@ _SYNC_RUN()
         break
     done
 
+    # Clear trap
+    trap - INT
+
+    if [ "${quite}" != "true" ]; then
+        _SYNC_OUTPUT_INFO "${list}"
+        PRINT "Releasing locks..." "info" 0
+    fi
+
+    PRINT "Releasing all locks..." "info" 0
+    # Release all locks
+    # TODO: parallelize this
     local host=
     local tmpFile=
     local tuple=
@@ -9134,9 +9153,6 @@ _SYNC_RUN()
         tmpFile="${tuple#*:}"
         _SYNC_RELEASE_LOCK "${host}" "${randomToken}" 2>>"${tmpFile}"
     done
-
-    # Clear trap
-    trap - INT
 
     _PRJ_LOG_C "SYNC_LOCK_RELEASED token:${randomToken}"
 
@@ -9726,14 +9742,14 @@ _PRJ_POD_SHELL()
 {
     local _SPACE_NAME="_PRJ_POD_SHELL"
 
+    local useBash="${1:-false}"
+    shift
+
     local podTriple="${1}"
     shift
 
-    local container="${1}"
-    shift
-
-    local useBash="${1:-false}"
-    shift
+    local container="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
 
     local pod=
     local version=
@@ -9768,7 +9784,7 @@ _PRJ_POD_SHELL()
             continue
         fi
 
-        PRINT "Enter shell of ${pod}:${podVersion}@${host}" "info" 0
+        PRINT "Enter shell of ${pod}:${podVersion}@${host} ${container}" "info" 0
         _REMOTE_EXEC "${host}" "pod_shell" "${pod}" "${podVersion}" "${container}" "${useBash}"
         # Error code passed on
     done
@@ -10585,7 +10601,7 @@ _PRJ_GET_POD_LOGS2()
 
     local i=
     local status=
-    _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}"
+    _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "$@"
     status="$?"
     if [ "${status}" -eq 0 ]; then
         return 0
@@ -11163,13 +11179,10 @@ _PRJ_IS_CLUSTER_CLEAN()
         local fileNames="$(printf "%s\\n" "${dirtyFiles}" |awk '{print $NF}')"
         local file=
         for file in ${fileNames}; do
-            if [ "${file}" = "log.txt" ]; then
+            if [ "${file#*_synclogs/*sync.log.txt}" != "${file}" ]; then
                 continue
             fi
-            if [ "${file#_synclogs/}" != "${file}" ]; then
-                continue
-            fi
-            if [ "${file#*/*/*/log.txt}" != "${file}" ]; then
+            if [ "${file##*/log.txt}" != "${file}" ]; then
                 continue
             fi
             return 1
@@ -11230,6 +11243,9 @@ _SYNC_RUN2()
     local gitCommitChain="${1}"
     shift
 
+    local tmpFile="${1}"
+    shift
+
     local pid=
 
     # Spawn off subprocess
@@ -11266,7 +11282,7 @@ _SYNC_RUN2()
             PRINT "No updates to be made." "info" 0
             return 0
         fi
-    )&
+    )2>"${tmpFile}" >/dev/null &
     pid=$!
 
     printf "%s\\n" "${pid}"
@@ -11279,10 +11295,12 @@ _SYNC_OUTPUT_INFO()
     local isFinal="${1}"
     shift
 
-    [ -t 1 ]
-    local isTTY=$?
+    local isTTY="false"
+    if [ -t 1 ]; then
+        isTTY="true"
+    fi
 
-    if [ "${isTTY}" = 0 ]; then
+    if [ "${isTTY}" = "true" ]; then
         _UTIL_CLEAR_SCREEN
         :
     else
@@ -11444,7 +11462,7 @@ _PRJ_CHECK_PORT_CLASHES()
         # Extract hostPorts from the proxy config lines.
         local hostPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
 
-        local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
+        #local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d |tr "\n" " ")"
 
         ## Check if there are any duplicate host ports in usage on the host.
         #if [ -n "${duplicateHostPorts}" ]; then
@@ -11453,7 +11471,7 @@ _PRJ_CHECK_PORT_CLASHES()
         #fi
 
         ## Check if any hostport is interfering with any clusterport
-        #local clashingPorts="$( { printf "%s\\n" "${hostPorts}" |uniq; printf "%s\\n" "${clusterPorts}" |uniq; } |sort |uniq -d)"
+        #local clashingPorts="$( { printf "%s\\n" "${hostPorts}" |uniq; printf "%s\\n" "${clusterPorts}" |uniq; } |sort |uniq -d |tr "\n" " ")"
         #if [ -n "${clashingPorts}" ]; then
             #PRINT "Clashing of cluster and host ports detected on host ${host}: ${clashingPorts}" "error" 0
             #err=1

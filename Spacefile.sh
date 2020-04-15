@@ -381,19 +381,13 @@ RELEASE()
 
 POD_SHELL()
 {
-    SPACE_SIGNATURE="podTriple [container useBash]"
+    SPACE_SIGNATURE="useBash podTriple [container]"
     SPACE_DEP="_PRJ_POD_SHELL"
 
-    local podTriple="${1}"
+    local useBash="${1:-false}"
     shift
 
-    local container="${1:-}"
-    shift $(($# > 0 ? 1 : 0))
-
-    local useBash="${1:-false}"
-    shift $(($# > 0 ? 1 : 0))
-
-    _PRJ_POD_SHELL "${podTriple}" "${container}" "${useBash}"
+    _PRJ_POD_SHELL "${useBash}" "$@"
 }
 
 HOST_SHELL()
@@ -552,15 +546,16 @@ USAGE()
     get-host-state host
         Get the state of a host
 
-    logs pod[:version][@host] [-t timestamp] [-l limit] [-s stdout|stderr]
+    logs pod[:version][@host] [containers] [-t timestamp] [-l limit] [-s stdout|stderr]
         Get logs for a pod on one or all attached hosts.
         If version is left out the 'latest' version is searched for.
         If host is left out then get logs for all attached hosts.
+        If containers are left out then get logs for all containers in pod.
         -t timestamp is UNIX timestamp to get from, 0 get's all.
-        -l limit is the maximum number of lines to get, negative gets from bottom (newest)
+        -l limit is the maximum number of lines to get, negative gets from bottom (newest). 0 means no limit (default).
         -s streams is to get stdout, stderr or both, as: -s stdout | -s stderr | -s stdout,stderr (default)
 
-    signal pod[:version][@host] [container]
+    signal pod[:version][@host] [containers]
         Signal a pod on a specific host or on all attached hosts.
         Optionally specify which containers to signal, defualt is all containers in the pod.
 
@@ -581,13 +576,12 @@ USAGE()
     daemon-log [host]
         Get the daemon log
 
-    pod-shell pod[:version][@host] [-c container] [-B]
+    pod-shell pod[:version][@host] [container] [-B]
         Step into a shell inside a container of a pod.
         If version is left out the 'latest' version is searched for.
         If host is left out then enter the container on each host, in sequential order.
-        -c option states the name of the container to enter.
-           If not set then the last container of the pod is entered (as defined in the pod.yaml).
-        -B set to force the use of bash as shell, otherwise uses sh.
+        Optionally give the container to enter, if not set then the last container of the pod is entered (order as defined in the pod.yaml).
+        -B set to force the use of bash as shell, otherwise use sh.
 
     host-shell host [-s] [-B]
         Step into a shell inside a specific host.
@@ -981,8 +975,8 @@ _SNT_CMDLINE()
         local _out_l="0"
         local _out_s="stdout,stderr"
 
-        if ! _GETOPTS "" "t l s" 1 1 "$@"; then
-            printf "Usage: snt logs pod[:version][@host] [-t timestamp] [-l limit] [-s streams]\\n" >&2
+        if ! _GETOPTS "" "t l s" 1 999 "$@"; then
+            printf "Usage: snt logs pod[:version][@host] [containers] [-t timestamp] [-l limit] [-s streams]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1031,15 +1025,14 @@ _SNT_CMDLINE()
         RELEASE "${_out_rest}" "${_out_m}" "${_out_p}" "${_out_f}"
     elif [ "${action}" = "pod-shell" ]; then
         local _out_rest=
-        local _out_c=""
         local _out_B="false"
 
-        if ! _GETOPTS "B" "c" 1 1 "$@"; then
-            printf "Usage: snt pod-shell pod[:version][@host] [-c container] [-B]\\n" >&2
+        if ! _GETOPTS "B" "" 1 2 "$@"; then
+            printf "Usage: snt pod-shell pod[:version][@host] [container] [-B]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
-        POD_SHELL "${1}" "${_out_c}" "${_out_B}"
+        POD_SHELL "${_out_B}" "$@"
     elif [ "${action}" = "host-shell" ]; then
         local _out_rest=
         local _out_s="false"

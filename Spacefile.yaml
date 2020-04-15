@@ -420,7 +420,9 @@ hosts:
                     - stdout,stderr
             - pod:
                 title: Pod to get logs for, as: pod[:version][@host]
-            - RUN: LOGS -- "${timestamp}" "${limit}" "${streams}" "${pod}"
+            - containers:
+                title: Containers to get logs for. Leave blank for all.
+            - RUN: LOGS -- "${timestamp}" "${limit}" "${streams}" "${pod}" ${containers}
     pod_ready:
         _info:
             title: Get ready status for the pod
@@ -453,7 +455,7 @@ pod_shell:
             title: The name of the container to enter. Default is the last container in the order it was defined in the pod.yaml specification.
         - useBash:
             title: Set to 'true' to force bash shell
-        - RUN: POD_SHELL -- "${pod}" "${container}" "${useBash}"
+        - RUN: POD_SHELL -- "${useBash}" "${pod}" ${container}
 
 host_shell:
     _info:

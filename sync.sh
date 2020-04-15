@@ -73,12 +73,16 @@ _SYNC_RUN()
     fi
 
     # Get the cluster metadata for each host.
+    # TODO: parallelize this
     local host=
     local tmpFile=
     local tuple=
     for tuple in ${list}; do
         host="${tuple%:*}"
         tmpFile="${tuple#*:}"
+        if [ "${quite}" != "true" ]; then
+            PRINT "Downloading metadata from host ${host}" "info" 0
+        fi
         local hostClusterMeta=
         if ! hostClusterMeta="$(_SYNC_GET_METADATA "${host}")"; then
             PRINT "Could not communicate with host: ${host}. If this host is to be out of rotation first disable it, if this is a temporary hickup in the network run this command again in a while." "error" 0
@@ -140,6 +144,7 @@ _SYNC_RUN()
     unset host
 
     # Get a lock on all hosts.
+    # TODO: parallelize this
     local randomToken="$(awk 'BEGIN{min=1;max=65535;srand(); print int(min+rand()*(max-min+1))}')"
     local lockedHosts=""
     local host=
@@ -148,6 +153,9 @@ _SYNC_RUN()
     for tuple in ${list}; do
         host="${tuple%:*}"
         tmpFile="${tuple#*:}"
+        if [ "${quite}" != "true" ]; then
+            PRINT "Acquire lock on host ${host}" "info" 0
+        fi
         if ! _SYNC_ACQUIRE_LOCK "${host}" "${randomToken}" 2>>"${tmpFile}"; then
             PRINT "Could not acquire lock on host ${host}." "error" 0
             _PRJ_LOG_C "SYNC_LOCK_ACQUIRE_ERROR token:${randomToken} host:${host}"
@@ -171,6 +179,9 @@ _SYNC_RUN()
     ## If a host fails then this sync should be run again or that host should be taken out of rotation.
     ## Syncs are alwaus idempotent, can be run multiple times.
 
+    if [ "${quite}" != "true" ]; then
+        PRINT "Init sync..." "info" 0
+    fi
 
     local timeout="$(($(date +%s)+1200))"
     local pid=
@@ -181,7 +192,7 @@ _SYNC_RUN()
     for tuple in ${list}; do
         host="${tuple%:*}"
         tmpFile="${tuple#*:}"
-        if ! pid="$(_SYNC_RUN2 "${host}" "${gitCommitChain}" 2>"${tmpFile}")"; then
+        if ! pid="$(_SYNC_RUN2 "${host}" "${gitCommitChain}" "${tmpFile}")"; then
             PRINT "Could not spawn process, aborting. Sync might now be in a halfway state, you should rerun this sync when possible." "error" 0
             # Make it kill any processes immediately.
             timeout=0
@@ -222,6 +233,16 @@ _SYNC_RUN()
         break
     done
 
+    # Clear trap
+    trap - INT
+
+    if [ "${quite}" != "true" ]; then
+        _SYNC_OUTPUT_INFO "${list}"
+        PRINT "Releasing locks..." "info" 0
+    fi
+
+    # Release all locks
+    # TODO: parallelize this
     local host=
     local tmpFile=
     local tuple=
@@ -230,9 +251,6 @@ _SYNC_RUN()
         tmpFile="${tuple#*:}"
         _SYNC_RELEASE_LOCK "${host}" "${randomToken}" 2>>"${tmpFile}"
     done
-
-    # Clear trap
-    trap - INT
 
     _PRJ_LOG_C "SYNC_LOCK_RELEASED token:${randomToken}"
 
@@ -314,10 +332,12 @@ _SYNC_OUTPUT_INFO()
     local isFinal="${1}"
     shift
 
-    [ -t 1 ]
-    local isTTY=$?
+    local isTTY="false"
+    if [ -t 1 ]; then
+        isTTY="true"
+    fi
 
-    if [ "${isTTY}" = 0 ]; then
+    if [ "${isTTY}" = "true" ]; then
         _UTIL_CLEAR_SCREEN
         :
     else
@@ -344,13 +364,16 @@ _SYNC_OUTPUT_INFO()
 # We assume we are holding the lock on the host already.
 _SYNC_RUN2()
 {
-    SPACE_SIGNATURE="host gitcommitchain"
+    SPACE_SIGNATURE="host gitcommitchain tmpFile"
     SPACE_DEP="_SYNC_SET_CHAIN _SYNC_DOWNLOAD_RELEASE_DATA _SYNC_BUILD_UPDATE_ARCHIVE _SYNC_PERFORM_UPDATES"
 
     local host="${host}"
     shift
 
     local gitCommitChain="${1}"
+    shift
+
+    local tmpFile="${1}"
     shift
 
     local pid=
@@ -389,7 +412,7 @@ _SYNC_RUN2()
             PRINT "No updates to be made." "info" 0
             return 0
         fi
-    )&
+    )2>"${tmpFile}" >/dev/null &
     pid=$!
 
     printf "%s\\n" "${pid}"
@@ -980,10 +1003,14 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
             PRINT "Stepping into release: ${pod}/release/${release}" "debug"
             cd "${release}"
 
-            PRINT "Update pod ${pod}:${release}" "info" 0
+            PRINT "Processing pod ${pod}:${release}" "info" 0
 
             # Move sh and state files inside release dir
             local dir="${livePods}/${pod}/release/${release}"
+            local releaseExists="false"
+            if [ -d "${dir}" ]; then
+                releaseExists="true"
+            fi
             mkdir -p "${dir}"
             local file=
             for file in $(find . -mindepth 1 -maxdepth 1 -type f -not -path './.*' |cut -b3-); do
@@ -996,8 +1023,6 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
                 cd ..  # Step out of "release" dir.
                 continue
             fi
-
-            PRINT "Update configs for: ${pod}/release/${release}" "debug"
 
             # Update the configs in the config dir
             cd "config"
@@ -1013,7 +1038,7 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
                 local chksumFile="${dir}/${config}.txt"
                 # NOTE: we could make the resume more clever by deciding on this when starting. Samll risk now is that there's a timeout on update and another update comes in and "resumes" when it should reset.
                 local isResumed="0"
-                if [ ! -f "${chksumFile}" ]; then
+                if [ "${releaseExists}" = "true" ] && [ ! -f "${chksumFile}" ]; then
                     # This means that this unpacking has been resumed and we
                     # should not delete the target files (again).
                     PRINT "Resuming unpacking of pod config ${pod}:${release}:${config}" "info" 0

@@ -49,7 +49,7 @@ _PRJ_REGISTRY_CONFIG()
 # Connect to the cluster and retrieve logs for a pod instance.
 _PRJ_GET_POD_LOGS()
 {
-    SPACE_SIGNATURE="timestamp limit streams podTriple"
+    SPACE_SIGNATURE="timestamp limit streams podTriple [containers]"
     SPACE_DEP="_PRJ_LIST_ATTACHEMENTS PRINT _PRJ_DOES_HOST_EXIST _PRJ_GET_POD_LOGS2 _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE STRING_IS_NUMBER"
     SPACE_ENV="CLUSTERPATH"
 
@@ -115,13 +115,14 @@ _PRJ_GET_POD_LOGS()
             continue
         fi
 
-        _PRJ_GET_POD_LOGS2 "${host}" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}"
+        PRINT "Get logs for ${pod}:${podVersion}@${host} $*" "info" 0
+        _PRJ_GET_POD_LOGS2 "${host}" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "$@"
     done
 }
 
 _PRJ_GET_POD_LOGS2()
 {
-    SPACE_SIGNATURE="host pod podVersion timestamp limit streams"
+    SPACE_SIGNATURE="host pod podVersion timestamp limit streams [containers]"
     SPACE_DEP="_REMOTE_EXEC PRINT _PRJ_DOES_HOST_EXIST"
     SPACE_ENV="CLUSTERPATH"
 
@@ -150,7 +151,7 @@ _PRJ_GET_POD_LOGS2()
 
     local i=
     local status=
-    _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}"
+    _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "$@"
     status="$?"
     if [ "${status}" -eq 0 ]; then
         return 0
@@ -362,18 +363,18 @@ _PRJ_HOST_SHELL()
 
 _PRJ_POD_SHELL()
 {
-    SPACE_SIGNATURE="podTriple container useBash"
+    SPACE_SIGNATURE="useBash podTriple [container]"
     SPACE_DEP="PRINT _PRJ_LIST_ATTACHEMENTS _PRJ_DOES_HOST_EXIST _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE _REMOTE_EXEC"
     SPACE_ENV="CLUSTERPATH"
+
+    local useBash="${1:-false}"
+    shift
 
     local podTriple="${1}"
     shift
 
-    local container="${1}"
-    shift
-
-    local useBash="${1:-false}"
-    shift
+    local container="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
 
     local pod=
     local version=
@@ -408,7 +409,7 @@ _PRJ_POD_SHELL()
             continue
         fi
 
-        PRINT "Enter shell of ${pod}:${podVersion}@${host}" "info" 0
+        PRINT "Enter shell of ${pod}:${podVersion}@${host} ${container}" "info" 0
         _REMOTE_EXEC "${host}" "pod_shell" "${pod}" "${podVersion}" "${container}" "${useBash}"
         # Error code passed on
     done
@@ -2071,7 +2072,7 @@ _PRJ_HOST_CREATE()
     local internal="${1:-192.168.0.0/16 10.0.0.0/8 172.16.0.0/11}"
     shift
 
-    local routerAddress="${1}"
+    local routerAddress="${1:-$host:32767}"
     shift
 
     if _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
@@ -2187,7 +2188,8 @@ INTERNAL=${internal}
 HOSTHOME=${hostHome}
 
 # ROUTERADDRESS is the the IP:port within the cluster where this host's Proxy service can be reached at.
-# Most often localIP:2222.
+# Most often localIP:32767.
+# These addresses will be aggregated and placed and the hosts so that the proxy can find the list.
 ROUTERADDRESS=${routerAddress}" >"${dir}/host.env"
 
     # Possibly create the host-superuser.env file
@@ -2300,13 +2302,10 @@ _PRJ_IS_CLUSTER_CLEAN()
         local fileNames="$(printf "%s\\n" "${dirtyFiles}" |awk '{print $NF}')"
         local file=
         for file in ${fileNames}; do
-            if [ "${file}" = "log.txt" ]; then
+            if [ "${file#*_synclogs/*sync.log.txt}" != "${file}" ]; then
                 continue
             fi
-            if [ "${file#_synclogs/}" != "${file}" ]; then
-                continue
-            fi
-            if [ "${file#*/*/*/log.txt}" != "${file}" ]; then
+            if [ "${file##*/log.txt}" != "${file}" ]; then
                 continue
             fi
             return 1
@@ -2333,7 +2332,7 @@ _PRJ_CHECK_PORT_CLASHES()
         # Extract hostPorts from the proxy config lines.
         local hostPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
 
-        local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
+        local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d |tr "\n" " ")"
 
         # Check if there are any duplicate host ports in usage on the host.
         if [ -n "${duplicateHostPorts}" ]; then
@@ -2342,7 +2341,7 @@ _PRJ_CHECK_PORT_CLASHES()
         fi
 
         # Check if any hostport is interfering with any clusterport
-        local clashingPorts="$( { printf "%s\\n" "${hostPorts}" |uniq; printf "%s\\n" "${clusterPorts}" |uniq; } |sort |uniq -d)"
+        local clashingPorts="$( { printf "%s\\n" "${hostPorts}" |uniq; printf "%s\\n" "${clusterPorts}" |uniq; } |sort |uniq -d |tr "\n" " ")"
         if [ -n "${clashingPorts}" ]; then
             PRINT "Clashing of cluster and host ports detected on host ${host}: ${clashingPorts}" "error" 0
             err=1
