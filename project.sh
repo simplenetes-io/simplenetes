@@ -610,8 +610,14 @@ _PRJ_GET_DAEMON_LOG2()
         return 1
     fi
 
+    hostEnv2="${CLUSTERPATH}/${host}/host-superuser.env"
+    if [ ! -f "${hostEnv2}" ]; then
+        PRINT "${hostEnv2} file does not exist." "error" 0
+        return 1
+    fi
+
     local status=
-    _REMOTE_EXEC "${host}" "daemon-log"
+    _REMOTE_EXEC "${host}:${hostEnv2}" "daemon-log"
     status="$?"
     if [ "${status}" -eq 0 ]; then
         return 0
@@ -645,10 +651,10 @@ _PRJ_GET_DAEMON_LOG()
     fi
     unset host
 
-    [ -z "${hosts}" ] && {
+    if [ -z "${hosts}" ]; then
         PRINT "No hosts active" "warning" 0
-        return 0;
-    }
+        return 0
+    fi
 
     local host=
     for host in ${hosts}; do
@@ -656,6 +662,7 @@ _PRJ_GET_DAEMON_LOG()
         _PRJ_GET_DAEMON_LOG2 "${host}"
     done
 }
+
 # Return the pod.version.state file
 _PRJ_GET_POD_RELEASE_STATES()
 {

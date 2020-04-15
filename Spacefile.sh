@@ -579,7 +579,7 @@ USAGE()
         -f if set will force sync changes to cluster
 
     daemon-log [host]
-        Get the systemd unit daemon log
+        Get the daemon log
 
     pod-shell pod[:version][@host] [-c container] [-B]
         Step into a shell inside a container of a pod.

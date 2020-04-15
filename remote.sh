@@ -32,10 +32,10 @@ _REMOTE_EXEC()
     fi
 
     local HOSTHOME=
-    local JUMPHOST=
+    local HOST=
     local value=
     local varname=
-    for varname in HOSTHOME JUMPHOST; do
+    for varname in HOSTHOME HOST; do
         value="$(grep -m 1 "^${varname}=" "${hostEnv}")"
         value="${value#*${varname}=}"
         STRING_TRIM "value"
@@ -46,7 +46,7 @@ _REMOTE_EXEC()
         HOSTHOME="cluster-host"
     fi
 
-    if [ "${JUMPHOST}" = "local" ]; then
+    if [ "${HOST}" = "local" ]; then
         PRINT "Connecting directly on local disk using shell" "debug"
     fi
 
@@ -151,14 +151,14 @@ _REMOTE_EXEC()
     esac
 
     if [ -n "${RUN}" ]; then
-        if [ "${JUMPHOST}" = "local" ]; then
+        if [ "${HOST}" = "local" ]; then
             sh -c "${RUN}" "sh" "${HOSTHOME}" "$@"
         else
             SSH "" "" "" "" "" "${hostEnv}" "" "${RUN}" "${HOSTHOME}" "$@"
         fi
     else
         # Run the space target to do this. This is usually only done in dev mode.
-        if [ "${JUMPHOST}" = "local" ]; then
+        if [ "${HOST}" = "local" ]; then
             space -L "${SPACE_LOG_LEVEL}" -f "${0}" /_remote_plumbing/${action}/ -- "${HOSTHOME}" "$@"
         else
             space -L "${SPACE_LOG_LEVEL}" -f "${0}" /_remote_plumbing/${action}/ -m ssh /wrap/ -e SSHHOSTFILE="${hostEnv}" -- "${HOSTHOME}" "$@"
@@ -234,7 +234,7 @@ _REMOTE_DAEMON_LOG()
     SPACE_SIGNATURE="[hosthome]"
 
     # TODO: add limits and time windows.
-    cat "/${HOME}/sntd.log"
+    cat "/root/sntd.log"
 }
 
 _REMOTE_SIGNAL()

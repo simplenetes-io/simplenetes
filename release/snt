@@ -3760,7 +3760,7 @@ _REMOTE_DAEMON_LOG()
     local _SPACE_NAME=\"_REMOTE_DAEMON_LOG\"
 
     # TODO: add limits and time windows.
-    cat \"/\${HOME}/sntd.log\"
+    cat \"/root/sntd.log\"
 }
 
 main()
@@ -6378,7 +6378,7 @@ USAGE()
         -f if set will force sync changes to cluster
 
     daemon-log [host]
-        Get the systemd unit daemon log
+        Get the daemon log
 
     pod-shell pod[:version][@host] [-c container] [-B]
         Step into a shell inside a container of a pod.
@@ -9162,10 +9162,10 @@ _PRJ_GET_DAEMON_LOG()
     fi
     unset host
 
-    [ -z "${hosts}" ] && {
+    if [ -z "${hosts}" ]; then
         PRINT "No hosts active" "warning" 0
-        return 0;
-    }
+        return 0
+    fi
 
     local host=
     for host in ${hosts}; do
@@ -10960,10 +10960,10 @@ _REMOTE_EXEC()
     fi
 
     local HOSTHOME=
-    local JUMPHOST=
+    local HOST=
     local value=
     local varname=
-    for varname in HOSTHOME JUMPHOST; do
+    for varname in HOSTHOME HOST; do
         value="$(grep -m 1 "^${varname}=" "${hostEnv}")"
         value="${value#*${varname}=}"
         STRING_TRIM "value"
@@ -10974,7 +10974,7 @@ _REMOTE_EXEC()
         HOSTHOME="cluster-host"
     fi
 
-    if [ "${JUMPHOST}" = "local" ]; then
+    if [ "${HOST}" = "local" ]; then
         PRINT "Connecting directly on local disk using shell" "debug"
     fi
 
@@ -11079,14 +11079,14 @@ _REMOTE_EXEC()
     esac
 
     if [ -n "${RUN}" ]; then
-        if [ "${JUMPHOST}" = "local" ]; then
+        if [ "${HOST}" = "local" ]; then
             sh -c "${RUN}" "sh" "${HOSTHOME}" "$@"
         else
             SSH "" "" "" "" "" "${hostEnv}" "" "${RUN}" "${HOSTHOME}" "$@"
         fi
     else
         # Run the space target to do this. This is usually only done in dev mode.
-        if [ "${JUMPHOST}" = "local" ]; then
+        if [ "${HOST}" = "local" ]; then
             space -L "${SPACE_LOG_LEVEL}" -f "${0}" /_remote_plumbing/${action}/ -- "${HOSTHOME}" "$@"
         else
             space -L "${SPACE_LOG_LEVEL}" -f "${0}" /_remote_plumbing/${action}/ -m ssh /wrap/ -e SSHHOSTFILE="${hostEnv}" -- "${HOSTHOME}" "$@"
@@ -11446,18 +11446,18 @@ _PRJ_CHECK_PORT_CLASHES()
 
         local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
 
-        # Check if there are any duplicate host ports in usage on the host.
-        if [ -n "${duplicateHostPorts}" ]; then
-            PRINT "Duplicate usage of host ports detected on host ${host}: ${duplicateHostPorts}" "error" 0
-            err=1
-        fi
+        ## Check if there are any duplicate host ports in usage on the host.
+        #if [ -n "${duplicateHostPorts}" ]; then
+            #PRINT "Duplicate usage of host ports detected on host ${host}: ${duplicateHostPorts}" "error" 0
+            #err=1
+        #fi
 
-        # Check if any hostport is interfering with any clusterport
-        local clashingPorts="$( { printf "%s\\n" "${hostPorts}" |uniq; printf "%s\\n" "${clusterPorts}" |uniq; } |sort |uniq -d)"
-        if [ -n "${clashingPorts}" ]; then
-            PRINT "Clashing of cluster and host ports detected on host ${host}: ${clashingPorts}" "error" 0
-            err=1
-        fi
+        ## Check if any hostport is interfering with any clusterport
+        #local clashingPorts="$( { printf "%s\\n" "${hostPorts}" |uniq; printf "%s\\n" "${clusterPorts}" |uniq; } |sort |uniq -d)"
+        #if [ -n "${clashingPorts}" ]; then
+            #PRINT "Clashing of cluster and host ports detected on host ${host}: ${clashingPorts}" "error" 0
+            #err=1
+        #fi
     done
 
     return "${err}"
@@ -11475,8 +11475,14 @@ _PRJ_GET_DAEMON_LOG2()
         return 1
     fi
 
+    hostEnv2="${CLUSTERPATH}/${host}/host-superuser.env"
+    if [ ! -f "${hostEnv2}" ]; then
+        PRINT "${hostEnv2} file does not exist." "error" 0
+        return 1
+    fi
+
     local status=
-    _REMOTE_EXEC "${host}" "daemon-log"
+    _REMOTE_EXEC "${host}:${hostEnv2}" "daemon-log"
     status="$?"
     if [ "${status}" -eq 0 ]; then
         return 0
