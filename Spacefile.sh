@@ -422,90 +422,107 @@ USAGE()
         Creates a cluster project with the given name in the current directory.
 
     sync [-f] [-q]
-        Sync the cluster project in the current directory with the Cluster
+        Sync the cluster project in the current directory with the Cluster.
         -f switch set then a force sync is performed. This is useful when performing a rollback
             or if restoring a previous branch-out.
-        -q set to be more quite.
+        -q set to be quite.
 
     status
-        Output status of the Cluster
+        Output status of the Cluster.
 
     import-config pod
-        Import config templates from pod repo into the cluster project
+        Import config templates from pod repo into the cluster project.
 
     create-host host -a address [-j jumpHost -e expose -h hostHome -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]
         Create a host in the cluster repo by the name 'host'.
-        -a host IP:PORT. (required)
+        -a host IP:PORT (required).
             If host is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead.
 
-        -j jumphost (optional
-            is an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.)
+        -j jumphost (optional)
+            an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
+
         -e expose (optional)
             can be a comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
+
         -h hostHome (optional)
-            can be specified as the host cluster home dir
+            can be specified as the host cluster home dir.
+
         -u username (optional)
-            If set then either the regulsr user already exists on the host or we just set the desired name of the regular user.
+            If set then either the regular user already exists on the host or we just set the desired name of the regular user.
+
         -k keyfile (optional)
             If user is set and already exists on the host then also the keyfile needs to be set.
+
         -s superusername (optional)
             If set then this is an already existing superuser on the host. Some ISPs provide a superuser instead of root access when creating a VM.
+
         -S superuserkeyfile (optional)
             If superuser is set then also the keyfile can be set. If not set it defaults to 'id_rsa_super', which must be placed in the host directory.
+
         -i internal (optional)
             Networks which are considered local. Used for allowing hosts on the same network to connect.
+
         -r routeraddress (optional)
             The IP:PORT of the router proxy on the host.
+            This address is used internally by the proxies and is is the address
+            of the proxy. Usually it is \"internalIP:32767\".
 
     create-superuser host [-k rootkeyfile]
         Login as root on the host and create the super user.
         rootkeyfile is optional, of not set then password is required to login as root.
 
     disable-root host
-        Use the super user account to disable the root login on a host
+        Use the super user account to disable the root login on a host.
 
     setup-host host
         Setup the host using the superuser
-        Creates the regular user, installs podman, configures firewalld, etc.
+        Creates the regular user, installs podman, configures firewalld, installs the daemon, etc.
+        This command is idempotent and is safe to run multiple times.
 
     init-host host
-        Initialize a host to be part of the cluster and configure the Daemon to manage it's pods.
-        Also upload the registry-config.json file for the host. This command is idempotent and is safe to run multiple times.
+        Initialize a host to be part of the cluster by writing the cluster-id.txt file to hosthome.
+        Also upload the registry-config.json file for the host.
+        This command is idempotent and is safe to run multiple times.
 
     ls-hosts [-a] [-s]
-        List active and inactive hosts in this cluster project
-        -a if set then also list disabled hosts
-        -s if set then add a status column to the output
+        List active and inactive hosts in this cluster project.
+        -a if set then also list disabled hosts.
+        -s if set then add a status column to the output.
 
     ls-pods
-        List all known pods in the PODPATH
+        List all pods in the PODPATH.
 
     ls-hosts-by-pod pod
-        List all hosts who have a given pod attached
+        List all hosts who have a given pod attached.
+        Only provide the pod name, without any version.
 
     ls-pods-by-host host
-        List all pods attached to a specific host
+        List all pods attached to a specific host.
 
     attach-pod pod@host
-        Attach a Pod to a host, this does not deploy anything nor release anything
-        host must exist in the cluster project
-        pod must exist on PODPATH
+        Attach a Pod to a host, this does not deploy anything nor release anything.
+        Host must exist in the cluster project.
+        pod must exist on PODPATH.
+        If this was the first attachement any pod config templates are imported into the cluster project.
 
     detach-pod pod[@host]
-        Remove a pod from one or all hosts
+        Remove a pod from one or all hosts.
 
     compile pod[@host] [-v]
         Compile the current pod version to all (or one) host(s) which it is already attached to.
         If host is left out then compile on all hosts which have the pod attached.
-        If -v option set then output the pod version to stdout
+        If -v option set then output the new pod version to stdout (porcelain switch used internally).
+        Pod configs stored in the cluster (_config/) will automatically be copied into the new release.
 
     update-config pod[:version][@host]
-        Re-copy the pod config in the cluster to a specific pod release.
+        Re-copy the cluster pod configs (from _config/) to a specific pod release.
+        This operation is typically done when wanting to update configs of a pod but
+        not release a new version of the pod (ingress pod uses this to update its routing table).
         If host is left out then copy configs to all hosts which have the pod attached.
         If version is left out the 'latest' version is searched for.
 
     set-pod-ingress pod[:version][@host] -s active|inactive
-        Set ingress active or inactive of a specific pod version on one/all attached hosts.
+        Set ingress active or inactive of a specific pod release on one/all attached hosts.
         If version is left out the 'latest' version is searched for.
         If host is left out then set state for pod on all hosts which the pod is attached to.
         Multiple pods can be given on cmd line.
@@ -526,7 +543,7 @@ USAGE()
         -q, if set then do not output the state column
         -s, if set then filter for the provided state
 
-    get-pod-status pod[:version][@host] [-q] [-r]
+    pod-status pod[:version][@host] [-q] [-r]
         Get the actual status of a pod (not the desired state).
         If host is left out then get status of the pod for all hosts which the pod is attached to.
         If version is left out the 'latest' version is searched for.
@@ -931,7 +948,7 @@ _SNT_CMDLINE()
         fi
         set -- ${_out_rest}
         LS_POD_RELEASE_STATE "${_out_s}" "${_out_q}" "$@"
-    elif [ "${action}" = "get-pod-status" ]; then
+    elif [ "${action}" = "pod-status" ]; then
         local _out_rest=
         local _out_q="false"
         local _out_r="false"

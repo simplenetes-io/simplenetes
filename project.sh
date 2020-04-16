@@ -1649,7 +1649,7 @@ _PRJ_DETACH_POD()
 _PRJ_ATTACH_POD()
 {
     SPACE_SIGNATURE="podTuple"
-    SPACE_DEP="PRINT _PRJ_DOES_HOST_EXIST _PRJ_IS_POD_ATTACHED _PRJ_LOG_P _PRJ_LIST_ATTACHEMENTS STRING_IS_ALL _PRJ_SPLIT_POD_TRIPLE FILE_REALPATH TEXT_EXTRACT_VARIABLES"
+    SPACE_DEP="PRINT _PRJ_DOES_HOST_EXIST _PRJ_IS_POD_ATTACHED _PRJ_LOG_P _PRJ_LIST_ATTACHEMENTS STRING_IS_ALL _PRJ_SPLIT_POD_TRIPLE FILE_REALPATH TEXT_EXTRACT_VARIABLES _PRJ_CLUSTER_IMPORT_POD_CFG"
     SPACE_ENV="CLUSTERPATH PODPATH"
 
     local podTuple="${1}"
@@ -1718,7 +1718,8 @@ _PRJ_ATTACH_POD()
     hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
     if [ "${hosts}" = "${host}" ]; then
         if [ ! -d "${CLUSTERPATH}/_config/${pod}" ] && [ -d "${podConfigDir}" ]; then
-            PRINT "This was the first attachement of this pod to this cluster, you might want to import the pod configs into the cluster" "info" 0
+            PRINT "This was the first attachement of this pod to this cluster, importing template configs from pod into cluster project" "info" 0
+            _PRJ_CLUSTER_IMPORT_POD_CFG "${pod}"
         fi
     fi
 }
@@ -2086,7 +2087,7 @@ _PRJ_HOST_CREATE()
     local internal="${1:-192.168.0.0/16 10.0.0.0/8 172.16.0.0/11}"
     shift
 
-    local routerAddress="${1:-$host:32767}"
+    local routerAddress="${1:-}"
     shift
 
     if _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
