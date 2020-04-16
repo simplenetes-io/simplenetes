@@ -1337,6 +1337,36 @@ _PRJ_COMPILE_POD()
 
     ## Now everything is setup for us to compile the pod onto each host it is attached to.
 
+    # Check for auto assignments of cluster ports.
+    # and do sanity check on variable names.
+    local text="$(cat "${podSpec}")"
+    local variablesToSubst="$(TEXT_EXTRACT_VARIABLES "${text}")"
+    local newClusterPorts=""    # To keep track of already assigned cluster ports
+    local valuesClusterPorts=""
+    local varname=
+    for varname in ${variablesToSubst}; do
+        # Do sanity check on the variable name extracted.
+        if ! STRING_IS_ALL "${varname}" "A-Za-z0-9_" || [ "${varname#[_0-9]}" != "${varname}" ]; then
+            PRINT "Variable name '${varname}' contains illegal characters. Only [A-Za-z0-9_] are allowed, and cannot begin with underscore or digit." "error" 0
+            return 1
+        fi
+        if [ "${varname#CLUSTERPORTAUTO}" != "${varname}" ]; then
+            # This is an auto cluster port assignment.
+            # we need to find a free port and assign the variable.
+            local newport=
+            if ! newport="$(_PRJ_GET_FREE_CLUSTERPORT "${newClusterPorts}")"; then
+                PRINT "Could not acquire a free cluster port." "error" 0
+                return 1
+            fi
+            newClusterPorts="${newClusterPorts}${newClusterPorts:+ }${newport}"
+            valuesClusterPorts="${valuesClusterPorts}${valuesClusterPorts:+${newline}}${varname}=${newport}"
+        fi
+    done
+
+    if [ -n "${newClusterPorts}" ]; then
+        PRINT "Cluster (wide) ports auto generated: ${newClusterPorts}" "info" 0
+    fi
+
     local status=0  # Status flag checked after the for-loop.
     local podsCompiled=""  # Keep track of all pods compiled so we can remove them if we encounter an error.
     local host=
@@ -1344,11 +1374,13 @@ _PRJ_COMPILE_POD()
         # Perform variable substitution
         ## 1. Extract variables used in pod.yaml file
         ## 2. Inspect those to see if any are ${HOSTPORTAUTOxyz}, then for each 'xyz' we find a free host port on the host to assign that variable.
-        ## 3. Prefix any variables naames in pod.yaml with "podname_".
+        ## 3. Prefix any variables names in pod.yaml with "podname_".
         ## 4. Run first sweep of substitution.
         ## 5. Load cluster variables from cluster-vars.env
         ## 6. Run second sweep of variable substituation on pod.yaml
 
+        # We need to get the podspec new for each host iteration becuase the compilation can look different
+        # on each host for auto assigned host ports.
         local text="$(cat "${podSpec}")"
         local variablesToSubst="$(TEXT_EXTRACT_VARIABLES "${text}")"
         local newline="
@@ -1357,17 +1389,10 @@ _PRJ_COMPILE_POD()
         # For each ${HOSTPORTAUTOxyz} we find free host ports and substitute that.
         local variablesAll=""       # For show, all variables read from cluster-vars.env
         local variablesToSubst2=""  # Use this to save variable names for the second sweep of substitutions.
-        local values=""             # Values to substitute in first sweep
+        local values="${valuesClusterPorts}"             # Values to substitute in first sweep, start out with any clusterport substitutions.
         local newHostPorts=""       # To keep track of already assigned host ports
-        local newClusterPorts=""   # To keep track of already assigned cluster ports
         local varname=
         for varname in ${variablesToSubst}; do
-            # Do sanity check on the variable name extracted.
-            if ! STRING_IS_ALL "${varname}" "A-Za-z0-9_" || [ "${varname#[_0-9]}" != "${varname}" ]; then
-                PRINT "Variable name '${varname}' contains illegal characters. Only [A-Za-z0-9_] are allowed, and cannot begin with underscore or digit." "error" 0
-                status=1
-                break 2
-            fi
             if [ "${varname#HOSTPORTAUTO}" != "${varname}" ]; then
                 # This is an auto host port assignment,
                 # we need to find a free port and assign the variable.
@@ -1377,19 +1402,12 @@ _PRJ_COMPILE_POD()
                     status=1
                     break 2
                 fi
-                newHostPorts="${newHostPorts} ${newport}"
+                newHostPorts="${newHostPorts}${newHostPorts:+ }${newport}"
                 values="${values}${values:+${newline}}${varname}=${newport}"
             elif [ "${varname#CLUSTERPORTAUTO}" != "${varname}" ]; then
-                # This is an auto cluster port assignment,
-                # we need to find a free port and assign the variable.
-                local newport=
-                if ! newport="$(_PRJ_GET_FREE_CLUSTERPORT "${newHostPorts}")"; then
-                    PRINT "Could not acquire a free cluster port." "error" 0
-                    status=1
-                    break 2
-                fi
-                newHostPorts="${newHostPorts} ${newport}"
-                values="${values}${values:+${newline}}${varname}=${newport}"
+                # This is an auto cluster port assignment.
+                # This is already taken care of.
+                :
             else
                 # This is user defined variable, check if it is global or pod specific.
                 # Global variables are shared between pods and are all CAPS.
@@ -1408,12 +1426,8 @@ _PRJ_COMPILE_POD()
             fi
         done
 
-        if [ -n "${newClusterPorts}" ]; then
-            PRINT "Cluster ports auto generated:${newClusterPorts}" "info" 0
-        fi
-
-        if [ -n "${newClusterPorts}" ]; then
-            PRINT "Host ports auto generated:${newClusterPorts}" "info" 0
+        if [ -n "${newHostPorts}" ]; then
+            PRINT "Host ports auto generated on host '${host}': ${newHostPorts}" "info" 0
         fi
 
         PRINT "Variable names extracted from pod.yaml and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
@@ -2332,17 +2346,23 @@ _PRJ_CHECK_PORT_CLASHES()
         # Extract hostPorts from the proxy config lines.
         local hostPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
 
-        local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d |tr "\n" " ")"
+        local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
 
         # Check if there are any duplicate host ports in usage on the host.
         if [ -n "${duplicateHostPorts}" ]; then
+            local newline="
+"
+            STRING_SUBST "duplicateHostPorts" "${newline}" " " 1
             PRINT "Duplicate usage of host ports detected on host ${host}: ${duplicateHostPorts}" "error" 0
             err=1
         fi
 
         # Check if any hostport is interfering with any clusterport
-        local clashingPorts="$( { printf "%s\\n" "${hostPorts}" |uniq; printf "%s\\n" "${clusterPorts}" |uniq; } |sort |uniq -d |tr "\n" " ")"
+        local clashingPorts="$( { printf "%s\\n" "${hostPorts}" |uniq; printf "%s\\n" "${clusterPorts}" |uniq; } |sort |uniq -d)"
         if [ -n "${clashingPorts}" ]; then
+            local newline="
+"
+            STRING_SUBST "clashingPorts" "${newline}" " " 1
             PRINT "Clashing of cluster and host ports detected on host ${host}: ${clashingPorts}" "error" 0
             err=1
         fi
@@ -2351,7 +2371,8 @@ _PRJ_CHECK_PORT_CLASHES()
     return "${err}"
 }
 
-# Find first unused cluster ports on all hosts, between 61000 to 63999.
+# Find first unused cluster port on all hosts, between 61000 to 63999.
+# Also take into account any host ports which might be set in the range.
 _PRJ_GET_FREE_CLUSTERPORT()
 {
     SPACE_SIGNATURE="reservedPorts:0"
@@ -2361,7 +2382,7 @@ _PRJ_GET_FREE_CLUSTERPORT()
     local reservedPorts="${1}"
 
     # Extract clusterPorts from the proxy config lines from all pods on all hosts.
-    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1)"
+    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=60999
     local p=
@@ -2381,7 +2402,7 @@ _PRJ_GET_FREE_CLUSTERPORT()
     done
 
     if [ "${port}" -gt "63999" ]; then
-        PRINT "All cluster ports between 61000-63999 are already claimed on cluster. You need to purge some old versions of pods to free up claims on cluster ports." "error" 0
+        PRINT "All cluster ports between 61000-63999 are already claimed on cluster. You need to delete some old versions of pods to free up claims on cluster ports." "error" 0
         return 1
     fi
 
@@ -2389,6 +2410,7 @@ _PRJ_GET_FREE_CLUSTERPORT()
 }
 
 # Find first unused host ports on a specific host, between 30000 to 31999.
+# Also take into account any clusterPorts which might have been set in the designated range.
 _PRJ_GET_FREE_HOSTPORT()
 {
     SPACE_SIGNATURE="host reservedPorts:0"
@@ -2402,8 +2424,8 @@ _PRJ_GET_FREE_HOSTPORT()
 
     local dir="${CLUSTERPATH}/${host}/pods"
 
-    # Extract hostPorts from the proxy config lines.
-    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2)"
+    # Extract hostPorts and clusterPorts from the proxy config lines.
+    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=29999
     local p=
@@ -2423,7 +2445,7 @@ _PRJ_GET_FREE_HOSTPORT()
     done
 
     if [ "${port}" -gt "31999" ]; then
-        PRINT "All ports between 30000-31999 are already claimed on host ${host}. You need to purge some old versions of pods to free up claims on host ports." "error" 0
+        PRINT "All ports between 30000-31999 are already claimed on host ${host}. You need to delete some old versions of pods to free up claims on host ports." "error" 0
         return 1
     fi
 
@@ -3112,7 +3134,6 @@ _PRJ_EXTRACT_INGRESS()
         else
             # proxy must be defined in /etc/hosts to the IP where the proxy process is listening.
             #backendLine="server clusterPort-${clusterport} proxy:${clusterport} send-proxy"
-            # TODO: disable send-proxy to test without proxy
             backendLine="server clusterPort-${clusterport} proxy:${clusterport}"
         fi
 
