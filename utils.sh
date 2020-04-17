@@ -1,6 +1,52 @@
 ##
 # Utility functions
 
+# expects and assigns to:
+#  _out_exitCode-1: highest exit code for all processes
+#  _out_exitCodes: list of pids and their exit codes as "pid1:exxitCode1 pid2:exitCode2 etc"
+#  _wait_timeout: absolute unix time of when to timeout
+# Exit code 0 if all processes ended with success or still waiting.
+#   check _out_exitCode >-1 to know if done
+# Exit code >0 if timeout
+_UTIL_WAIT_PROCESSES()
+{
+    SPACE_SIGNATURE="pids"
+
+    # Wait for all pids to finish, check their exit code.
+    local now="$(date +%s)"
+    local exitCode=
+    local pid=
+    while true; do
+        for pid in ${pids}; do
+            if kill -0 "${pid}" 2>/dev/null; then
+                # Process still alive, check timeout
+                break 2
+            fi
+        done
+
+        # All processes ended, get exit codes.
+        for pid in ${pids}; do
+            wait "${pid}"
+            exitCode="$?"
+            if [ "${exitCode}" -gt "${_out_exitCode}" ]; then
+                _out_exitCode="${exitCode}"
+            fi
+            _out_exitCodes="${_out_exitCodes}${_out_exitCodes:+ }${pid}:${exitCode}"
+        done
+        return 0
+    done
+
+    # Process still alive, check overall timeout.
+    now="$(date +%s)"
+    if [ "${now}" -ge "${_wait_timeout}" ]; then
+        # Kill processes
+        for pid in ${pids}; do
+            kill -9 "${pid}" 2>/dev/null
+        done
+        return 1
+    fi
+}
+
 _UTIL_CLEAR_SCREEN()
 {
     tput clear
