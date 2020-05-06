@@ -4,7 +4,7 @@ _SYNC_RUN()
 {
     SPACE_SIGNATURE="forceSync quite"
     SPACE_ENV="CLUSTERPATH"
-    SPACE_DEP="PRINT _PRJ_IS_CLUSTER_CLEAN _PRJ_GET_CLUSTER_GIT_COMMIT_CHAIN _PRJ_GET_CLUSTER_ID _SYNC_GET_METADATA _SYNC_RUN2 _SYNC_OUTPUT_INFO _SYNC_ACQUIRE_LOCK _PRJ_LOG_C _PRJ_LIST_HOSTS _SYNC_KILL_SUBPROCESSES _SYNC_MK_TMP_FILES _SYNC_RM_TMP_FILES _PRJ_CHECK_PORT_CLASHES _SYNC_RELEASE_LOCKS _UTIL_WAIT_PROCESSES"
+    SPACE_DEP="PRINT _PRJ_IS_CLUSTER_CLEAN _PRJ_GET_CLUSTER_GIT_COMMIT_CHAIN _PRJ_GET_CLUSTER_ID _SYNC_GET_METADATA _SYNC_RUN2 _SYNC_OUTPUT_INFO _SYNC_ACQUIRE_LOCK _PRJ_LOG_C _PRJ_LIST_HOSTS _SYNC_MK_TMP_FILES _SYNC_RM_TMP_FILES _PRJ_CHECK_PORT_CLASHES _SYNC_RELEASE_LOCKS _UTIL_WAIT_PROCESSES"
 
     # The sync does the following:
 
@@ -253,16 +253,31 @@ _SYNC_RUN()
     done
 
     # trap INT and kill all subprocesses.
-    trap _SYNC_KILL_SUBPROCESSES INT
+    local _userAborted="0"
+    trap '_userAborted="1"' INT
 
     # Collect and show all output while we wait for pids to finish
     while true; do
+        if [ "${_userAborted}" = "1" ]; then
+            _PRJ_LOG_C "SYNC_ABORTED_BY_USER token:${randomToken}"
+
+            PRINT "Abruptly abort syncing on ctrl-c..." "error" 0
+            local pid=
+            for pid in ${pids}; do
+                PRINT "Kill sub process ${pid}." "info" 0
+                kill -9 "${pid}" 2>/dev/null
+            done
+            _SYNC_RM_TMP_FILES "${list}" "${randomToken}"
+            kill -9 $$ 2>/dev/null
+            break
+        fi
         if [ "$(date +%s)" -gt "${timeout}" ]; then
             # Check so actually timeouted, it could also have been forced timeouted on error above.
             if [ "${timeout}" -gt 0 ]; then
                 _PRJ_LOG_C "SYNC_ABORTED_ON_TIMEOUT token:${randomToken}"
             fi
             # Kill all processes
+            local pid=
             for pid in ${pids}; do
                 PRINT "Kill sub process ${pid} on timeout." "error" 0
                  kill -9 "${pid}" 2>/dev/null
@@ -274,6 +289,7 @@ _SYNC_RUN()
             _SYNC_OUTPUT_INFO "${list}"
         fi
         sleep 1
+        local pid=
         for pid in ${pids}; do
             if kill -0 "${pid}" 2>/dev/null; then
                 continue 2
@@ -353,21 +369,6 @@ _SYNC_MK_TMP_FILES()
     done
 
     printf "%s\\n" "${list}"
-}
-
-_SYNC_KILL_SUBPROCESSES()
-{
-    SPACE_DEP="_PRJ_LOG_C PRINT _SYNC_RM_TMP_FILES"
-
-    _PRJ_LOG_C "SYNC_ABORTED_BY_USER token:${randomToken}"
-
-    PRINT "Abruptly abort syncing on ctrl-c..." "error" 0
-    for pid in ${pids}; do
-        PRINT "Kill sub process ${pid}." "info" 0
-        kill -9 "${pid}" 2>/dev/null
-    done
-    _SYNC_RM_TMP_FILES "${list}" "${randomToken}"
-    kill -9 $$ 2>/dev/null
 }
 
 # If token given then output to logfile
