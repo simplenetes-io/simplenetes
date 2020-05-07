@@ -460,6 +460,9 @@ _SYNC_RUN2()
 
     # Spawn off subprocess
     (
+        # Bash needs INT to be ignored in subprocesses.
+        trap '' INT
+
         if ! _SYNC_SET_CHAIN "${host}" "${gitCommitChain}"; then
             PRINT "Could not set the commit id chain on the host." "error" 0
             return 1

@@ -9005,106 +9005,160 @@ _SYNC_RUN()
         return 1
     fi
 
-    # Get the cluster metadata for each host.
-    # TODO: parallelize this
+    # Get the cluster metadata for each host and check so that it works out.
     local host=
     local tmpFile=
     local tuple=
+    local pids=""
+    local pid=
     for tuple in ${list}; do
         host="${tuple%:*}"
         tmpFile="${tuple#*:}"
         if [ "${quite}" != "true" ]; then
-            PRINT "Downloading metadata from host ${host}" "info" 0
+            PRINT "Verifying metadata on host ${host}" "info" 0
         fi
-        local hostClusterMeta=
-        if ! hostClusterMeta="$(_SYNC_GET_METADATA "${host}")"; then
-            PRINT "Could not communicate with host: ${host}. If this host is to be out of rotation first disable it, if this is a temporary hickup in the network run this command again in a while." "error" 0
-            _SYNC_RM_TMP_FILES "${list}"
-            return 1
-        fi
-
-        # Check to remote has the same cluster ID.
-        local remoteClusterID="${hostClusterMeta%%[ ]*}"
-        if [ "${remoteClusterID}" != "${clusterID}" ]; then
-            PRINT "cluster ID of local project and on host ${host} do not match! Aborting. Maybe the host has to be initiated first?" "error" 0
-            _SYNC_RM_TMP_FILES "${list}"
-            return 1
-        fi
-
-        # Check so that remote git commit chain is behind or on HEAD.
-        local remoteChain="${hostClusterMeta#*[ ]}"
-        local remainder="${gitCommitChain#${remoteChain}}"
-        local remainder2="${remoteChain#${gitCommitChain}}"
-        PRINT "Remainder: ${remainder}" "debug" 0
-
-        if [ -z "${remoteChain}" ]; then
-            # Fall through
-            :
-        elif [ -n "${remainder2}" ] && [ "${remainder2}" != "${remoteChain}" ]; then
-            if [ "${forceSync}" = "true" ]; then
-                PRINT "Force syncing a rollback." "warning" 0 2>>"${tmpFile}"
-                # Fall through
-            else
-                PRINT "Host ${host} HEAD is in front of what we are syncing! If this is a rollback you need to force it." "error" 0
-                _SYNC_RM_TMP_FILES "${list}"
+        (
+            local hostClusterMeta=
+            if ! hostClusterMeta="$(_SYNC_GET_METADATA "${host}")"; then
+                PRINT "Could not communicate with host: ${host}. If this host is to be out of rotation first disable it, if this is a temporary hickup in the network run this command again in a while." "error" 0
                 return 1
             fi
-        elif [ -z "${remainder}" ]; then
-            # We are on HEAD.
-            PRINT "Host already on HEAD, checking for updates anyways (idempotent)." "info" 0 2>>"${tmpFile}"
-            # Fall through
-        elif [ "${remainder}" = "${gitCommitChain}" ]; then
-            # This is a branch, throw error
-            if [ "${forceSync}" = "true" ]; then
-                PRINT "Force syncing a branch onto host." "warning" 0 2>>"${tmpFile}"
-                # Fall through
-            else
-                PRINT "You are trying to sync a branched commit chain to host ${host}. You could force this update to reset the commit chain on host, but it can be dangerous." "error" 0
-                PRINT "Local chain: ${gitCommitChain}" "debug" 0
-                PRINT "Remote chain: ${remoteChain}" "debug" 0
-                PRINT "Remainder: ${remainder}" "debug" 0
-                _SYNC_RM_TMP_FILES "${list}"
+
+            # Check so remote has the same cluster ID.
+            local remoteClusterID="${hostClusterMeta%%[ ]*}"
+            if [ "${remoteClusterID}" != "${clusterID}" ]; then
+                PRINT "cluster ID of local project and on host ${host} do not match! Aborting. Maybe the host has to be initiated first?" "error" 0
                 return 1
             fi
-        else
-            local previousCommit="${remoteChain##*[ ]}"
-            local head="${gitCommitChain##*[ ]}"
-            PRINT "Syncing host up from commit \"${previousCommit}\" to the following HEAD: \"${head}\"" "info" 0 2>>"${tmpFile}"
-            # Fall through
-        fi
-        unset hostClusterMeta
+
+            # Check so that remote git commit chain is behind or on HEAD.
+            local remoteChain="${hostClusterMeta#*[ ]}"
+            local remainder="${gitCommitChain#${remoteChain}}"
+            local remainder2="${remoteChain#${gitCommitChain}}"
+            PRINT "Remainder: ${remainder}" "debug" 0
+
+            if [ -z "${remoteChain}" ]; then
+                # Fall through
+                :
+            elif [ -n "${remainder2}" ] && [ "${remainder2}" != "${remoteChain}" ]; then
+                if [ "${forceSync}" = "true" ]; then
+                    PRINT "Force syncing a rollback." "warning" 0 2>>"${tmpFile}"
+                    # Fall through
+                else
+                    PRINT "Host ${host} HEAD is in front of what we are syncing! If this is a rollback you need to force it." "error" 0
+                    return 1
+                fi
+            elif [ -z "${remainder}" ]; then
+                # We are on HEAD.
+                PRINT "Host already on HEAD, checking for updates anyways (idempotent)." "info" 0 2>>"${tmpFile}"
+                # Fall through
+            elif [ "${remainder}" = "${gitCommitChain}" ]; then
+                # This is a branch, throw error
+                if [ "${forceSync}" = "true" ]; then
+                    PRINT "Force syncing a branch onto host." "warning" 0 2>>"${tmpFile}"
+                    # Fall through
+                else
+                    PRINT "You are trying to sync a branched commit chain to host ${host}. You could force this update to reset the commit chain on host, but it can be dangerous." "error" 0
+                    PRINT "Local chain: ${gitCommitChain}" "debug" 0
+                    PRINT "Remote chain: ${remoteChain}" "debug" 0
+                    PRINT "Remainder: ${remainder}" "debug" 0
+                    return 1
+                fi
+            else
+                local previousCommit="${remoteChain##*[ ]}"
+                local head="${gitCommitChain##*[ ]}"
+                PRINT "Syncing host up from commit \"${previousCommit}\" to the following HEAD: \"${head}\"" "info" 0 2>>"${tmpFile}"
+                # Fall through
+            fi
+            unset hostClusterMeta
+        )&
+        pid=$!
+        pids="${pids}${pids:+ }${pid}"
     done
     unset host
+
+    local _out_exitCodes=""
+    local _out_exitCode=-1
+    local _wait_timeout="$(($(date +%s)+120))"
+    while true; do
+        if ! _UTIL_WAIT_PROCESSES "${pids}"; then
+            # Timeout or weird error
+            _out_exitCode=99
+        fi
+
+        if [ "${_out_exitCode}" -gt "-1" ]; then
+            # Done
+            if [ "${_out_exitCode}" -gt 0 ]; then
+                # Error
+                PRINT "Could not download and analyze metadata" "error" 0
+                _SYNC_RM_TMP_FILES "${list}"
+                return 1
+            fi
+            break
+        fi
+
+        # Output to TTY ongoing updates.
+        if [ "${quite}" != "true" ]; then
+            _SYNC_OUTPUT_INFO "${list}"
+        fi
+        sleep 1
+    done
 
     # Get a lock on all hosts.
-    # TODO: parallelize this
     local randomToken="$(awk 'BEGIN{min=1;max=65535;srand(); print int(min+rand()*(max-min+1))}')"
-    local lockedHosts=""
+    local lockedHosts2=""
     local host=
     local tmpFile=
     local tuple=
+    local pids=""
+    local pid=
     for tuple in ${list}; do
         host="${tuple%:*}"
         tmpFile="${tuple#*:}"
-        if [ "${quite}" != "true" ]; then
-            PRINT "Acquire lock on host ${host}" "info" 0
-        fi
-        if ! _SYNC_ACQUIRE_LOCK "${host}" "${randomToken}" 2>>"${tmpFile}"; then
-            PRINT "Could not acquire lock on host ${host}." "error" 0
-            _PRJ_LOG_C "SYNC_LOCK_ACQUIRE_ERROR token:${randomToken} host:${host}"
-            # Unlock previously locked
-            for host in ${lockedHosts}; do
-                _SYNC_RELEASE_LOCK "${host}" "${randomToken}" 2>>"${tmpFile}"
-            done
-            _SYNC_RM_TMP_FILES "${list}" "${randomToken}"
-            return 1
-        fi
-        lockedHosts="${lockedHosts}${lockedHosts:+,}${host}"
+        (
+            if ! _SYNC_ACQUIRE_LOCK "${host}" "${randomToken}" 2>>"${tmpFile}"; then
+                PRINT "Could not acquire lock on host ${host}." "error" 0 2>>"${tmpFile}"
+                _PRJ_LOG_C "SYNC_LOCK_ACQUIRE_ERROR token:${randomToken} host:${host}"
+                return 1
+            fi
+        ) &
+        pid=$!
+        pids="${pids}${pids:+ }${pid}"
+        lockedHosts2="${lockedHosts2}${lockedHosts2:+,}${host}"
     done
     unset host
 
-    _PRJ_LOG_C "SYNC_LOCK_ACQUIRED token:${randomToken} hosts:${lockedHosts}"
-    unset lockedHosts
+    local _out_exitCodes=""
+    local _out_exitCode=-1
+    local _wait_timeout="$(($(date +%s)+120))"
+    while true; do
+        if ! _UTIL_WAIT_PROCESSES "${pids}"; then
+            # Timeout or weird error
+            _out_exitCode=99
+        fi
+
+        if [ "${_out_exitCode}" -gt "-1" ]; then
+            # Done
+            if [ "${_out_exitCode}" -gt 0 ]; then
+                # Error
+                PRINT "Could not acquire locks" "error" 0
+                # Unlock previously locked
+                _SYNC_RELEASE_LOCKS "${list}" "${randomToken}"
+                _SYNC_RM_TMP_FILES "${list}"
+                return 1
+            fi
+            break
+        fi
+
+        # Output to TTY ongoing updates.
+        if [ "${quite}" != "true" ]; then
+            _SYNC_OUTPUT_INFO "${list}"
+        fi
+        sleep 1
+    done
+
+    _PRJ_LOG_C "SYNC_LOCK_ACQUIRED token:${randomToken} hosts:${lockedHosts2}"
+    unset lockedHosts2
 
     ## Now we are all setup to run the sync on all hosts.
     ## We will do this in parallel and if any host fails at this stage
@@ -9112,11 +9166,7 @@ _SYNC_RUN()
     ## If a host fails then this sync should be run again or that host should be taken out of rotation.
     ## Syncs are alwaus idempotent, can be run multiple times.
 
-    if [ "${quite}" != "true" ]; then
-        PRINT "Init sync..." "info" 0
-    fi
-
-    local timeout="$(($(date +%s)+1200))"
+    local timeout="$(($(date +%s)+180))"
     local pid=
     local pids=""
     local host=
@@ -9136,16 +9186,31 @@ _SYNC_RUN()
     done
 
     # trap INT and kill all subprocesses.
-    trap _SYNC_KILL_SUBPROCESSES INT
+    local _userAborted="0"
+    trap '_userAborted="1"' INT
 
     # Collect and show all output while we wait for pids to finish
     while true; do
+        if [ "${_userAborted}" = "1" ]; then
+            _PRJ_LOG_C "SYNC_ABORTED_BY_USER token:${randomToken}"
+
+            PRINT "Abruptly abort syncing on ctrl-c..." "error" 0
+            local pid=
+            for pid in ${pids}; do
+                PRINT "Kill sub process ${pid}." "info" 0
+                kill -9 "${pid}" 2>/dev/null
+            done
+            _SYNC_RM_TMP_FILES "${list}" "${randomToken}"
+            kill -9 $$ 2>/dev/null
+            break
+        fi
         if [ "$(date +%s)" -gt "${timeout}" ]; then
             # Check so actually timeouted, it could also have been forced timeouted on error above.
             if [ "${timeout}" -gt 0 ]; then
                 _PRJ_LOG_C "SYNC_ABORTED_ON_TIMEOUT token:${randomToken}"
             fi
             # Kill all processes
+            local pid=
             for pid in ${pids}; do
                 PRINT "Kill sub process ${pid} on timeout." "error" 0
                  kill -9 "${pid}" 2>/dev/null
@@ -9157,6 +9222,7 @@ _SYNC_RUN()
             _SYNC_OUTPUT_INFO "${list}"
         fi
         sleep 1
+        local pid=
         for pid in ${pids}; do
             if kill -0 "${pid}" 2>/dev/null; then
                 continue 2
@@ -9169,25 +9235,21 @@ _SYNC_RUN()
     # Clear trap
     trap - INT
 
-    if [ "${quite}" != "true" ]; then
-        _SYNC_OUTPUT_INFO "${list}"
-        PRINT "Releasing locks..." "info" 0
+    # Release all locks
+    local status=0
+    if _SYNC_RELEASE_LOCKS "${list}" "${randomToken}"; then
+        _PRJ_LOG_C "SYNC_LOCK_RELEASED token:${randomToken}"
+    else
+        _PRJ_LOG_C "SYNC_LOCK_RELEASE_ERROR token:${randomToken}"
+        status=1
     fi
 
-    # Release all locks
-    # TODO: parallelize this
-    local host=
-    local tmpFile=
-    local tuple=
-    for tuple in ${list}; do
-        host="${tuple%:*}"
-        tmpFile="${tuple#*:}"
-        _SYNC_RELEASE_LOCK "${host}" "${randomToken}" 2>>"${tmpFile}"
-    done
-
-    _PRJ_LOG_C "SYNC_LOCK_RELEASED token:${randomToken}"
+    if [ "${quite}" != "true" ]; then
+        _SYNC_OUTPUT_INFO "${list}"
+    fi
 
     _SYNC_RM_TMP_FILES "${list}" "${randomToken}"
+    return "${status}"
 }
 
 _PRJ_GET_DAEMON_LOG()
@@ -11280,6 +11342,9 @@ _SYNC_RUN2()
 
     # Spawn off subprocess
     (
+        # Bash needs INT to be ignored in subprocesses.
+        trap '' INT
+
         if ! _SYNC_SET_CHAIN "${host}" "${gitCommitChain}"; then
             PRINT "Could not set the commit id chain on the host." "error" 0
             return 1
@@ -11312,7 +11377,7 @@ _SYNC_RUN2()
             PRINT "No updates to be made." "info" 0
             return 0
         fi
-    )2>"${tmpFile}" >/dev/null &
+    )2>>"${tmpFile}" >/dev/null &
     pid=$!
 
     printf "%s\\n" "${pid}"
@@ -11381,52 +11446,6 @@ _SYNC_ACQUIRE_LOCK()
     # Failed
     PRINT "Could not acquire lock." "error" 0
     return 1
-}
-
-_SYNC_RELEASE_LOCK()
-{
-    local _SPACE_NAME="_SYNC_RELEASE_LOCK"
-
-    local host="${1}"
-    shift
-
-    local token="${1}"
-    shift
-
-    local i=
-    local status=
-    # Try three times before failing
-    for i in 1 2 3; do
-        _REMOTE_EXEC "${host}" "release_lock" "${token}"
-        status="$?"
-        if [ "${status}" -eq 0 ]; then
-            return 0
-        elif [ "${status}" -eq 2 ]; then
-            PRINT "Could not release lock, it might not be our lock." "error" 0
-            return 2
-        elif [ "${status}" -eq 10 ]; then
-            return 1
-        fi
-    done
-
-    # Failed
-    PRINT "Could not release lock." "error" 0
-    return 1
-}
-
-_SYNC_KILL_SUBPROCESSES()
-{
-    local _SPACE_NAME="_SYNC_KILL_SUBPROCESSES"
-
-    _PRJ_LOG_C "SYNC_ABORTED_BY_USER token:${randomToken}"
-
-    PRINT "Abruptly abort syncing on ctrl-c..." "error" 0
-    for pid in ${pids}; do
-        PRINT "Kill sub process ${pid}." "info" 0
-        kill -9 "${pid}" 2>/dev/null
-    done
-    _SYNC_RM_TMP_FILES "${list}" "${randomToken}"
-    kill -9 $$ 2>/dev/null
 }
 
 _SYNC_MK_TMP_FILES()
@@ -11515,6 +11534,74 @@ _PRJ_CHECK_PORT_CLASHES()
     done
 
     return "${err}"
+}
+
+_SYNC_RELEASE_LOCKS()
+{
+    local _SPACE_NAME="_SYNC_RELEASE_LOCKS"
+
+    local list="${1}"
+    shift
+
+    local randomToken="${1}"
+    shift
+
+    local pids=""
+    for tuple in ${list}; do
+        local host="${tuple%:*}"
+        local tmpFile="${tuple#*:}"
+        local pid=""
+        (
+            _SYNC_RELEASE_LOCK "${host}" "${randomToken}" 2>>"${tmpFile}" >/dev/null
+        ) &
+        pid=$!
+        pids="${pids} ${pid}"
+    done
+
+    local _out_exitCodes=""
+    if ! _UTIL_WAIT_PROCESSES "${pids}"; then
+        PRINT "Could not release locks" "error" 0 2>>"${tmpFile}"
+        return 1
+    fi
+}
+
+_UTIL_WAIT_PROCESSES()
+{
+    local _SPACE_NAME="_UTIL_WAIT_PROCESSES"
+
+    # Wait for all pids to finish, check their exit code.
+    local now="$(date +%s)"
+    local exitCode=
+    local pid=
+    while true; do
+        for pid in ${pids}; do
+            if kill -0 "${pid}" 2>/dev/null; then
+                # Process still alive, check timeout
+                break 2
+            fi
+        done
+
+        # All processes ended, get exit codes.
+        for pid in ${pids}; do
+            wait "${pid}"
+            exitCode="$?"
+            if [ "${exitCode}" -gt "${_out_exitCode}" ]; then
+                _out_exitCode="${exitCode}"
+            fi
+            _out_exitCodes="${_out_exitCodes}${_out_exitCodes:+ }${pid}:${exitCode}"
+        done
+        return 0
+    done
+
+    # Process still alive, check overall timeout.
+    now="$(date +%s)"
+    if [ "${now}" -ge "${_wait_timeout}" ]; then
+        # Kill processes
+        for pid in ${pids}; do
+            kill -9 "${pid}" 2>/dev/null
+        done
+        return 1
+    fi
 }
 
 _PRJ_GET_DAEMON_LOG2()
@@ -12499,6 +12586,39 @@ _UTIL_GET_TMP_FILE()
 {
     local _SPACE_NAME="_UTIL_GET_TMP_FILE"
     mktemp 2>/dev/null || mktemp -t 'sometmpdir'
+}
+
+_SYNC_RELEASE_LOCK()
+{
+    local _SPACE_NAME="_SYNC_RELEASE_LOCK"
+
+    local host="${1}"
+    shift
+
+    local token="${1}"
+    shift
+
+    PRINT "Release lock on ${host}" "info" 0
+
+    local i=
+    local status=
+    # Try three times before failing
+    for i in 1 2 3; do
+        _REMOTE_EXEC "${host}" "release_lock" "${token}"
+        status="$?"
+        if [ "${status}" -eq 0 ]; then
+            return 0
+        elif [ "${status}" -eq 2 ]; then
+            PRINT "Could not release lock on ${host}, it might not be our lock." "error" 0
+            return 2
+        elif [ "${status}" -eq 10 ]; then
+            return 1
+        fi
+    done
+
+    # Failed
+    PRINT "Could not release lock on ${host}" "error" 0
+    return 1
 }
 
 FILE_APPEND_ROW()
