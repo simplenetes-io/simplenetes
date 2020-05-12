@@ -49,7 +49,7 @@ _PRJ_REGISTRY_CONFIG()
 # Connect to the cluster and retrieve logs for a pod instance.
 _PRJ_GET_POD_LOGS()
 {
-    SPACE_SIGNATURE="timestamp limit streams podTriple [containers]"
+    SPACE_SIGNATURE="timestamp limit streams details showProcessLog podTriple [containers]"
     SPACE_DEP="_PRJ_LIST_ATTACHEMENTS PRINT _PRJ_DOES_HOST_EXIST _PRJ_GET_POD_LOGS2 _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE STRING_IS_NUMBER"
     SPACE_ENV="CLUSTERPATH"
 
@@ -62,12 +62,18 @@ _PRJ_GET_POD_LOGS()
     local streams="${1:-stdout,stderr}"
     shift
 
-    if ! STRING_IS_NUMBER "${timestamp}"; then
-        PRINT "timeout must be positive number (seconds since epoch)" "error" 0
+    local details="${1:-}"
+    shift
+
+    local showProcessLog="${1:-}"
+    shift
+
+    if ! STRING_IS_NUMBER "${timestamp}" "1"; then
+        PRINT "timeout must be number (positive is seconds since epoch, negative is age as seconds from now)" "error" 0
         return 1
     fi
 
-    if ! STRING_IS_NUMBER "${limit}" 1; then
+    if ! STRING_IS_NUMBER "${limit}" "1"; then
         PRINT "limit must be a number" "error" 0
         return 1
     fi
@@ -116,13 +122,13 @@ _PRJ_GET_POD_LOGS()
         fi
 
         PRINT "Get logs for ${pod}:${podVersion}@${host} $*" "info" 0
-        _PRJ_GET_POD_LOGS2 "${host}" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "$@"
+        _PRJ_GET_POD_LOGS2 "${host}" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "${details}" "${showProcessLog}" "$@"
     done
 }
 
 _PRJ_GET_POD_LOGS2()
 {
-    SPACE_SIGNATURE="host pod podVersion timestamp limit streams [containers]"
+    SPACE_SIGNATURE="host pod podVersion timestamp limit streams details showProcessLogs [containers]"
     SPACE_DEP="_REMOTE_EXEC PRINT _PRJ_DOES_HOST_EXIST"
     SPACE_ENV="CLUSTERPATH"
 
@@ -144,6 +150,12 @@ _PRJ_GET_POD_LOGS2()
     local streams="${1}"
     shift
 
+    local details="${1}"
+    shift
+
+    local showProcessLogs="${1}"
+    shift
+
     if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
         PRINT "Host ${host} does not exist." "error" 0
         return 1
@@ -151,7 +163,7 @@ _PRJ_GET_POD_LOGS2()
 
     local i=
     local status=
-    _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "$@"
+    _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "${details}" "${showProcessLog}" "$@"
     status="$?"
     if [ "${status}" -eq 0 ]; then
         return 0
@@ -415,6 +427,11 @@ _PRJ_POD_SHELL()
     done
 }
 
+# Show status about the local cluster and how it compares to the known state of the remote cluster.
+# Show:
+# - git project dirty or clean
+# - list of all hosts and their state
+# - list of all pods which have the running state set
 _PRJ_GET_CLUSTER_STATUS()
 {
     # TODO: what to show here?
@@ -490,9 +507,9 @@ _PRJ_GET_POD_STATUS()
             # TODO: how to present this
             local status=
             if status="$(_PRJ_GET_POD_STATUS2 "${host}" "${pod}" "${podVersion}" "status")"; then
-                printf "Host: %s, Pod: %s\\nStatus: %s\\n" "${host}" "${pod}:${podVersion}" "${status}"
+                printf "host: %s\\n%s\\n" "${host}" "${status}"
             else
-                printf "Host: %s, Pod: %s\\nStatus: unknown\\n" "${host}" "${pod}:${podVersion}"
+                printf "host: %s\\npod: %s\\nstatus: unknown\\n" "${host}" "${pod}-${podVersion}"
             fi
         fi
     done
@@ -2943,8 +2960,6 @@ _PRJ_EXTRACT_INGRESS()
                 PRINT "Ignoring ingress for clusterPort ${clusterport}." "warning" 0
                 continue;
             fi
-
-            # TODO: Check so that clusterport is within the accepted range.
         fi
 
         local bindport="${bind%*:}"
@@ -3134,8 +3149,7 @@ _PRJ_EXTRACT_INGRESS()
             backendLine="errorfile ${errorfile}"
         else
             # proxy must be defined in /etc/hosts to the IP where the proxy process is listening.
-            #backendLine="server clusterPort-${clusterport} proxy:${clusterport} send-proxy"
-            backendLine="server clusterPort-${clusterport} proxy:${clusterport}"
+            backendLine="server clusterPort-${clusterport} proxy:${clusterport} send-proxy"
         fi
 
         local backendFile="${tmpDir}/${hash}-${protocol}_${type}.backend"

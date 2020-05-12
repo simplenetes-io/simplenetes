@@ -3462,6 +3462,12 @@ _REMOTE_LOGS()
     local streams=\"\${1}\"
     shift
 
+    local details=\"\${1}\"
+    shift
+
+    local showProcessLog=\"\${1}\"
+    shift
+
     local podFile=\"\${HOSTHOME}/pods/\${pod}/release/\${podVersion}/pod\"
 
     if [ ! -f \"\${podFile}\" ]; then
@@ -3469,7 +3475,11 @@ _REMOTE_LOGS()
         return 1
     fi
 
-    \${podFile} logs -l \"\${limit}\" -t \"\${timestamp}\" -s \"\${streams}\" \"\$@\"
+    if [ \"\${showProcessLog}\" = \"true\" ]; then
+        \${podFile} logs -l \"\${limit}\" -t \"\${timestamp}\" -s \"\${streams}\" -d \"\${details}\" -p \"\$@\"
+    else
+        \${podFile} logs -l \"\${limit}\" -t \"\${timestamp}\" -s \"\${streams}\" -d \"\${details}\" \"\$@\"
+    fi
 }
 
 STRING_SUBSTR()
@@ -3761,8 +3771,7 @@ _REMOTE_DAEMON_LOG()
 {
     local _SPACE_NAME=\"_REMOTE_DAEMON_LOG\"
 
-    # TODO: add limits and time windows.
-    cat \"/root/sntd.log\"
+    journactl -u sntd
 }
 
 main()
@@ -6370,14 +6379,22 @@ USAGE()
     get-host-state host
         Get the state of a host
 
-    logs pod[:version][@host] [containers] [-t timestamp] [-l limit] [-s stdout|stderr]
-        Get logs for a pod on one or all attached hosts.
-        If version is left out the 'latest' version is searched for.
-        If host is left out then get logs for all attached hosts.
-        If containers are left out then get logs for all containers in pod.
-        -t timestamp is UNIX timestamp to get from, 0 get's all.
-        -l limit is the maximum number of lines to get, negative gets from bottom (newest). 0 means no limit (default).
-        -s streams is to get stdout, stderr or both, as: -s stdout | -s stderr | -s stdout,stderr (default)
+    logs pod[:version][@host] [containers] [-p] [-t timestamp] [-l limit] [-s stdout|stderr] [-d details]
+        Output logs for one, many or all [containers] in a pod. If none given then show for all.
+        If pod version is left out the 'latest' version is searched for.
+        If pod host is left out then get logs for all attached hosts.
+        -p Show pod daemon process logs (can also be used in combination with [containers])
+        -t timestamp=UNIX timestamp to get logs from, defaults to 0
+           If negative value is given it is seconds relative to now (now-ts).
+        -s streams=[stdout|stderr|stdout,stderr], defaults to \"stdout,stderr\".
+        -l limit=nr of lines to get in total from the top, negative gets from the bottom (latest).
+        -d details=[ts|name|stream|none], comma separated if many.
+            if \"ts\" set will show the UNIX timestamp for each row.
+            if \"age\" set will show age as seconds for each row.
+            if \"name\" is set will show the container name for each row.
+            if \"stream\" is set will show the std stream the logs came on.
+            To not show any details set to \"none\".
+            Defaults to \"ts,name\".
 
     signal pod[:version][@host] [containers]
         Signal a pod on a specific host or on all attached hosts.
@@ -6664,16 +6681,18 @@ _SNT_CMDLINE()
         DELETE_POD "$@"
     elif [ "${action}" = "logs" ]; then
         local _out_rest=
-        local _out_t="0"
-        local _out_l="0"
-        local _out_s="stdout,stderr"
+        local _out_p="false"
+        local _out_t=
+        local _out_s=
+        local _out_l=
+        local _out_d=
 
-        if ! _GETOPTS "" "t l s" 1 999 "$@"; then
-            printf "Usage: snt logs pod[:version][@host] [containers] [-t timestamp] [-l limit] [-s streams]\\n" >&2
+        if ! _GETOPTS "p" "t l s d" 1 999 "$@"; then
+            printf "Usage: snt logs pod[:version][@host] [containers] [-p] [-t timestamp] [-l limit] [-s streams] [-d details]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
-        LOGS "${_out_t}" "${_out_l}" "${_out_s}" "$@"
+        LOGS "${_out_t}" "${_out_l}" "${_out_s}" "${_out_d}" "${_out_p}" "$@"
     elif [ "${action}" = "daemon-log" ]; then
         local _out_rest=
         if ! _GETOPTS "" "" 0 1 "$@"; then
@@ -6910,6 +6929,7 @@ LOGS()
 {
     local _SPACE_NAME="LOGS"
 
+    # All options are forwarded, the first non positional argument given is expected to be the podTriple.
     _PRJ_GET_POD_LOGS "$@"
 }
 
@@ -7631,12 +7651,18 @@ _PRJ_GET_POD_LOGS()
     local streams="${1:-stdout,stderr}"
     shift
 
-    if ! STRING_IS_NUMBER "${timestamp}"; then
-        PRINT "timeout must be positive number (seconds since epoch)" "error" 0
+    local details="${1:-}"
+    shift
+
+    local showProcessLog="${1:-}"
+    shift
+
+    if ! STRING_IS_NUMBER "${timestamp}" "1"; then
+        PRINT "timeout must be number (positive is seconds since epoch, negative is age as seconds from now)" "error" 0
         return 1
     fi
 
-    if ! STRING_IS_NUMBER "${limit}" 1; then
+    if ! STRING_IS_NUMBER "${limit}" "1"; then
         PRINT "limit must be a number" "error" 0
         return 1
     fi
@@ -7685,7 +7711,7 @@ _PRJ_GET_POD_LOGS()
         fi
 
         PRINT "Get logs for ${pod}:${podVersion}@${host} $*" "info" 0
-        _PRJ_GET_POD_LOGS2 "${host}" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "$@"
+        _PRJ_GET_POD_LOGS2 "${host}" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "${details}" "${showProcessLog}" "$@"
     done
 }
 
@@ -9812,9 +9838,9 @@ _PRJ_GET_POD_STATUS()
             # TODO: how to present this
             local status=
             if status="$(_PRJ_GET_POD_STATUS2 "${host}" "${pod}" "${podVersion}" "status")"; then
-                printf "Host: %s, Pod: %s\\nStatus: %s\\n" "${host}" "${pod}:${podVersion}" "${status}"
+                printf "host: %s\\n%s\\n" "${host}" "${status}"
             else
-                printf "Host: %s, Pod: %s\\nStatus: unknown\\n" "${host}" "${pod}:${podVersion}"
+                printf "host: %s\\npod: %s\\nstatus: unknown\\n" "${host}" "${pod}-${podVersion}"
             fi
         fi
     done
@@ -10038,8 +10064,6 @@ _PRJ_EXTRACT_INGRESS()
                 PRINT "Ignoring ingress for clusterPort ${clusterport}." "warning" 0
                 continue;
             fi
-
-            # TODO: Check so that clusterport is within the accepted range.
         fi
 
         local bindport="${bind%*:}"
@@ -10229,8 +10253,7 @@ _PRJ_EXTRACT_INGRESS()
             backendLine="errorfile ${errorfile}"
         else
             # proxy must be defined in /etc/hosts to the IP where the proxy process is listening.
-            #backendLine="server clusterPort-${clusterport} proxy:${clusterport} send-proxy"
-            backendLine="server clusterPort-${clusterport} proxy:${clusterport}"
+            backendLine="server clusterPort-${clusterport} proxy:${clusterport} send-proxy"
         fi
 
         local backendFile="${tmpDir}/${hash}-${protocol}_${type}.backend"
@@ -10686,6 +10709,12 @@ _PRJ_GET_POD_LOGS2()
     local streams="${1}"
     shift
 
+    local details="${1}"
+    shift
+
+    local showProcessLogs="${1}"
+    shift
+
     if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
         PRINT "Host ${host} does not exist." "error" 0
         return 1
@@ -10693,7 +10722,7 @@ _PRJ_GET_POD_LOGS2()
 
     local i=
     local status=
-    _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "$@"
+    _REMOTE_EXEC "${host}" "logs" "${pod}" "${podVersion}" "${timestamp}" "${limit}" "${streams}" "${details}" "${showProcessLog}" "$@"
     status="$?"
     if [ "${status}" -eq 0 ]; then
         return 0

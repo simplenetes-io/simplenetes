@@ -332,9 +332,10 @@ DAEMON_LOG()
 # Connect to the cluster and retrieve logs for a pod instance.
 LOGS()
 {
-    SPACE_SIGNATURE="timestamp limit streams podTriple"
+    SPACE_SIGNATURE="timestamp limit streams details showProcessLog podTriple [containers]"
     SPACE_DEP="_PRJ_GET_POD_LOGS"
 
+    # All options are forwarded, the first non positional argument given is expected to be the podTriple.
     _PRJ_GET_POD_LOGS "$@"
 }
 
@@ -563,14 +564,22 @@ USAGE()
     get-host-state host
         Get the state of a host
 
-    logs pod[:version][@host] [containers] [-t timestamp] [-l limit] [-s stdout|stderr]
-        Get logs for a pod on one or all attached hosts.
-        If version is left out the 'latest' version is searched for.
-        If host is left out then get logs for all attached hosts.
-        If containers are left out then get logs for all containers in pod.
-        -t timestamp is UNIX timestamp to get from, 0 get's all.
-        -l limit is the maximum number of lines to get, negative gets from bottom (newest). 0 means no limit (default).
-        -s streams is to get stdout, stderr or both, as: -s stdout | -s stderr | -s stdout,stderr (default)
+    logs pod[:version][@host] [containers] [-p] [-t timestamp] [-l limit] [-s stdout|stderr] [-d details]
+        Output logs for one, many or all [containers] in a pod. If none given then show for all.
+        If pod version is left out the 'latest' version is searched for.
+        If pod host is left out then get logs for all attached hosts.
+        -p Show pod daemon process logs (can also be used in combination with [containers])
+        -t timestamp=UNIX timestamp to get logs from, defaults to 0
+           If negative value is given it is seconds relative to now (now-ts).
+        -s streams=[stdout|stderr|stdout,stderr], defaults to \"stdout,stderr\".
+        -l limit=nr of lines to get in total from the top, negative gets from the bottom (latest).
+        -d details=[ts|name|stream|none], comma separated if many.
+            if \"ts\" set will show the UNIX timestamp for each row.
+            if \"age\" set will show age as seconds for each row.
+            if \"name\" is set will show the container name for each row.
+            if \"stream\" is set will show the std stream the logs came on.
+            To not show any details set to \"none\".
+            Defaults to \"ts,name\".
 
     signal pod[:version][@host] [containers]
         Signal a pod on a specific host or on all attached hosts.
@@ -988,16 +997,18 @@ _SNT_CMDLINE()
         DELETE_POD "$@"
     elif [ "${action}" = "logs" ]; then
         local _out_rest=
-        local _out_t="0"
-        local _out_l="0"
-        local _out_s="stdout,stderr"
+        local _out_p="false"
+        local _out_t=
+        local _out_s=
+        local _out_l=
+        local _out_d=
 
-        if ! _GETOPTS "" "t l s" 1 999 "$@"; then
-            printf "Usage: snt logs pod[:version][@host] [containers] [-t timestamp] [-l limit] [-s streams]\\n" >&2
+        if ! _GETOPTS "p" "t l s d" 1 999 "$@"; then
+            printf "Usage: snt logs pod[:version][@host] [containers] [-p] [-t timestamp] [-l limit] [-s streams] [-d details]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
-        LOGS "${_out_t}" "${_out_l}" "${_out_s}" "$@"
+        LOGS "${_out_t}" "${_out_l}" "${_out_s}" "${_out_d}" "${_out_p}" "$@"
     elif [ "${action}" = "daemon-log" ]; then
         local _out_rest=
         if ! _GETOPTS "" "" 0 1 "$@"; then

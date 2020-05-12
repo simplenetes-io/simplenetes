@@ -233,8 +233,7 @@ _REMOTE_DAEMON_LOG()
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome]"
 
-    # TODO: add limits and time windows.
-    cat "/root/sntd.log"
+    journactl -u sntd
 }
 
 _REMOTE_SIGNAL()
@@ -398,7 +397,7 @@ _REMOTE_POD_STATUS()
 _REMOTE_LOGS()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
-    SPACE_SIGNATURE="[hosthome pod podVersion timestamp limit streams containers]"
+    SPACE_SIGNATURE="[hosthome pod podVersion timestamp limit streams details showProcessLog containers]"
     SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
@@ -422,6 +421,12 @@ _REMOTE_LOGS()
     local streams="${1}"
     shift
 
+    local details="${1}"
+    shift
+
+    local showProcessLog="${1}"
+    shift
+
     local podFile="${HOSTHOME}/pods/${pod}/release/${podVersion}/pod"
 
     if [ ! -f "${podFile}" ]; then
@@ -429,7 +434,11 @@ _REMOTE_LOGS()
         return 1
     fi
 
-    ${podFile} logs -l "${limit}" -t "${timestamp}" -s "${streams}" "$@"
+    if [ "${showProcessLog}" = "true" ]; then
+        ${podFile} logs -l "${limit}" -t "${timestamp}" -s "${streams}" -d "${details}" -p "$@"
+    else
+        ${podFile} logs -l "${limit}" -t "${timestamp}" -s "${streams}" -d "${details}" "$@"
+    fi
 }
 
 # Public key of new user must come on stdin
