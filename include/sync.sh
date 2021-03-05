@@ -231,7 +231,7 @@ _SYNC_RUN()
     ## We will do this in parallel and if any host fails at this stage
     ## that will not abort the overall process but will be reported in the output.
     ## If a host fails then this sync should be run again or that host should be taken out of rotation.
-    ## Syncs are alwaus idempotent, can be run multiple times.
+    ## Syncs are always idempotent, can be run multiple times.
 
     local timeout="$(($(date +%s)+180))"
     local pid=
@@ -716,7 +716,7 @@ _SYNC_REMOTE_PACK_RELEASE_DATA()
     local data=""
 
     # Get the host list
-    local hostFile="${HOSTHOME}/cluster-hosts.txt"
+    local hostFile="${HOSTHOME}/hosts.conf"
     local hosts=""
     if [ -f "${hostFile}" ]; then
         hosts="$(cat "${hostFile}")"
@@ -810,7 +810,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
 
     PRINT "Using tmp dir ${tmpDir}" "debug"
 
-    # Compare cluster-hosts.txt on host with what we have locally.
+    # Compare hosts.conf on host with what we have locally.
     local hostsRouter="$(_PRJ_GET_ROUTER_HOSTS)"
     local updateHosts="0"
     local item=
@@ -831,7 +831,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
         local newline="
 "
         STRING_SUBST "hostsRouter" ";" "${newline}"
-        printf "%s\\n" "${hostsRouter}"  >"${tmpDir}/cluster-hosts.txt"
+        printf "%s\\n" "${hostsRouter}"  >"${tmpDir}/hosts.conf"
     fi
 
     #### PODS
@@ -1057,10 +1057,10 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
 
     cd "${archiveDir}"
 
-    # Check the cluster-hosts.txt file
-    if [ -f "cluster-hosts.txt" ]; then
-        PRINT "Update cluster-hosts.txt" "info" 0
-        mv -f "cluster-hosts.txt" "${HOSTHOME}"
+    # Check the hosts.conf file
+    if [ -f "hosts.conf" ]; then
+        PRINT "Update hosts.conf" "info" 0
+        mv -f "hosts.conf" "${HOSTHOME}"
     fi
 
     if [ ! -d "pods" ]; then
@@ -1139,7 +1139,7 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
                 if [ "${isResumed}" = "0" ]; then
                     # Empty the live dir
                     ( cd "${dir}" && ls -A |xargs rm -rf )
-                    rm "${chksumFile}"
+                    rm -f "${chksumFile}"
                 fi
 
                 # mv new files over

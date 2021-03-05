@@ -89,7 +89,7 @@ _UTIL_GET_TAG_DIR()
 
     local commitId=
     if ! commitId="$(cd "${dir}" && git rev-list -1 HEAD -- ./)"; then
-        PRINT "${dir} is not comitted." "warning" 0
+        PRINT "${dir} is not committed." "warning" 0
         printf "%s\\n" "<unknown>"
         return 0
     fi

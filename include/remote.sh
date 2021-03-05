@@ -157,7 +157,7 @@ _REMOTE_EXEC()
             SSH "" "" "" "" "" "${hostEnv}" "" "${RUN}" "${HOSTHOME}" "$@"
         fi
     else
-        # Run the space target to do this. This is usually only done in dev mode.
+        # Run the space target to do this. This is usually only done in dev mode when we are working with the snt source.
         if [ "${HOST}" = "local" ]; then
             space -L "${SPACE_LOG_LEVEL}" -f "${0}" /_remote_plumbing/${action}/ -- "${HOSTHOME}" "$@"
         else
@@ -218,6 +218,7 @@ _REMOTE_INIT_HOST()
     fi
 
     mkdir -p "${HOSTHOME}/pods"
+    printf "${clusterID}" >"${file}"
 
     # Get the config.json on STDIN
     local content="$(cat)"
@@ -226,6 +227,8 @@ _REMOTE_INIT_HOST()
         mkdir -p "${HOME}/.docker"
         printf "%s\\n" "${content}" >"${HOME}/.docker/config.json"
     fi
+
+    PRINT "Host successfully inited at ${HOSTHOME} for cluster ${clusterID}." "ok" 0
 }
 
 _REMOTE_DAEMON_LOG()
@@ -233,7 +236,7 @@ _REMOTE_DAEMON_LOG()
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome]"
 
-    journactl -u sntd
+    journalctl -u sntd
 }
 
 _REMOTE_SIGNAL()
@@ -563,6 +566,10 @@ _REMOTE_HOST_SETUP()
     if [ ! -f "${daemonFile}" ]; then
         # TODO
         PRINT "Downloading daemon binary" "info" 0
+        # TODO
+        wget https://github.com/simpletenes/sntd/releases/tag/1.0.0
+        chmod +x sntd
+        sudo mv sntd "${daemonFile}"
         binaryUpdated="true"
         return 0
     else
@@ -612,7 +619,7 @@ WantedBy=multi-user.target"
 
 _REMOTE_ACQUIRE_LOCK()
 {
-    # Arguments are actually not optional, but we do this so the exporting goes smoothly.
+    # Arguments are actually not optional, but we set them within [] so that the exporting does not complain.
     SPACE_SIGNATURE="[hosthome token seconds]"
     SPACE_DEP="PRINT STRING_SUBSTR FILE_REALPATH FILE_STAT"
 

@@ -408,6 +408,37 @@ HOST_SHELL()
     _PRJ_HOST_SHELL "${host}" "${superUser}" "${useBash}"
 }
 
+QUICKSTART()
+{
+    printf "%s\\n" "Quickstart:
+    # Create your management dir
+    mkdir mgmt-1
+    cd mgmt-1
+
+    # Pull in a pod into your management space
+    mkdir pods
+    cd pods
+    git pull github.com/simplenetes-io/nginx-webserver webserver
+    git pull github.com/simplenetes-io/ingress
+    cd ..
+
+    # Create a dev cluster for local work
+    snt create-cluster dev-cluster
+
+    cd dev-cluster
+    snt create-host laptop -a local -d simplenetes/host-laptop -r localhost:32767
+    snt init-host laptop
+
+    snt attach-pod webserver@laptop
+    snt attach-pod ingress@laptop
+
+    snt compile webserver
+    snt generate-ingress
+    snt compile ingress
+
+" >&2
+}
+
 USAGE()
 {
     printf "%s\\n" "Usage:
@@ -434,19 +465,23 @@ USAGE()
     import-config pod
         Import config templates from pod repo into the cluster project.
 
-    create-host host -a address [-j jumpHost -e expose -h hostHome -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]
+    create-host host -a address [-j jumpHost -e expose -d hostHome -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]
         Create a host in the cluster repo by the name 'host'.
         -a host IP:PORT (required).
-            If host is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead.
+            If host is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead,
+            which is only useful for when working with a local dev-cluster.
 
         -j jumphost (optional)
             an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
 
         -e expose (optional)
-            can be a comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
+            Comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
+            The ports listed here are automatically exposed in the firewall when running setup-host.
+            The list can later be modified in the host.env file, and snt setup-host must be run again.
 
-        -h hostHome (optional)
-            can be specified as the host cluster home dir.
+        -d home directory (optional)
+            Optionally specify the host's home dir on the server.
+            The default is the host name.
 
         -u username (optional)
             If set then either the regular user already exists on the host or we just set the desired name of the regular user.
@@ -461,12 +496,17 @@ USAGE()
             If superuser is set then also the keyfile can be set. If not set it defaults to 'id_rsa_super', which must be placed in the host directory.
 
         -i internal (optional)
-            Networks which are considered local. Used for allowing hosts on the same network to connect.
+            Comma separated list of networks which are considered local.
+            Used for allowing hosts on the same network to connect to each other.
+            The networks listed here are automatically configured in the host firewall when running setup-host.
+            Default is "192.168.0.0/16,10.0.0.0/8,172.16.0.0/11"
+            The list can later be modified in the host.env file, and snt setup-host must be run again.
 
         -r routeraddress (optional)
             The IP:PORT of the router proxy on the host.
             This address is used internally by the proxies and is is the address
             of the proxy. Usually it is \"internalIP:32767\".
+            When working with a local dev-cluster with a single host set it to \"localhost:32767\" or \"127.0.0.1:32767\".
 
     create-superuser host [-k rootkeyfile]
         Login as root on the host and create the super user.
@@ -476,9 +516,10 @@ USAGE()
         Use the super user account to disable the root login on a host.
 
     setup-host host
-        Setup the host using the superuser
+        Setup the host using the superuser.
         Creates the regular user, installs podman, configures firewalld, installs the daemon, etc.
         This command is idempotent and is safe to run multiple times.
+        If the EXPOSE or INTERNAL variables in host.env are changed then this action need to be run.
 
     init-host host
         Initialize a host to be part of the cluster by writing the cluster-id.txt file to hosthome.
@@ -560,6 +601,10 @@ USAGE()
             Comma separated string of clusterPorts to exclude from the Ingress configuration
 
     set-host-state host -s active|inactive|disabled
+        Updates the host's host.state file.
+        active   - has ingress, internal proxy routing and are synced.
+        inactive - no ingress, no internal proxy routing but are still synced.
+        disabled - no ingress, no internal proxy routing and not synced. Just ignored.
 
     get-host-state host
         Get the state of a host
@@ -583,7 +628,7 @@ USAGE()
 
     signal pod[:version][@host] [containers]
         Signal a pod on a specific host or on all attached hosts.
-        Optionally specify which containers to signal, defualt is all containers in the pod.
+        Optionally specify which containers to signal, default is all containers in the pod.
 
     delete pod[:version][@host]
         Delete pod releases which are in the \"removed\" state.
@@ -600,7 +645,8 @@ USAGE()
         -f if set will force sync changes to cluster
 
     daemon-log [host]
-        Get the daemon log
+        Get the daemon log.
+        This requires superuser privileges.
 
     pod-shell pod[:version][@host] [container] [-B]
         Step into a shell inside a container of a pod.
@@ -730,28 +776,30 @@ SNT_CMDLINE()
 
     local oldCwd="${PWD}"
 
-    # Check for cluster-id.txt, upwards and cd into that dir so that snt becomes more flexible in where users execute it from.
-    # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH=$PWD, and we allow to check upward for a cluster-id.txt
-    local dots="./"
-    if [ ! -f "cluster-id.txt" ] && [ "${CLUSTERPATH}" = "${PWD}" ]; then
-        PRINT "CLUSTERPATH not valid, searching upwards for cluster-id.txt" "debug"
-        while true; do
-            while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
-                dots="../${dots}"
-                if [ -f "${dots}/cluster-id.txt" ]; then
-                    # Found it
-                    CLUSTERPATH="$(FILE_REALPATH "${dots}")"
-                    PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug"
-                    if [ ! -d "${PODPATH}" ]; then
-                        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
-                        PRINT "Setting new PODPATH: ${PODPATH}" "debug"
+    if [ "${1:-}" != "create-cluster" ]; then
+        # Check for cluster-id.txt, upwards and cd into that dir so that snt becomes more flexible in where users execute it from.
+        # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH=$PWD, and we allow to check upward for a cluster-id.txt
+        local dots="./"
+        if [ ! -f "cluster-id.txt" ] && [ "${CLUSTERPATH}" = "${PWD}" ]; then
+            PRINT "CLUSTERPATH not valid, searching upwards for cluster-id.txt" "debug"
+            while true; do
+                while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
+                    dots="../${dots}"
+                    if [ -f "${dots}/cluster-id.txt" ]; then
+                        # Found it
+                        CLUSTERPATH="$(FILE_REALPATH "${dots}")"
+                        PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug"
+                        if [ ! -d "${PODPATH}" ]; then
+                            PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
+                            PRINT "Setting new PODPATH: ${PODPATH}" "debug"
+                        fi
+                        break 2
                     fi
-                    break 2
-                fi
+                done
+                PRINT "No cluster project detected, cannot continue" "error" 0
+                return 1
             done
-            PRINT "No cluster project detected, cannot continue" "error" 0
-            return 1
-        done
+        fi
     fi
 
     local status=
@@ -805,7 +853,7 @@ _SNT_CMDLINE()
     elif [ "${action}" = "create-host" ]; then
         local _out_j=
         local _out_e=
-        local _out_h=
+        local _out_d=
         local _out_a=
         local _out_u=
         local _out_k=
@@ -814,11 +862,11 @@ _SNT_CMDLINE()
         local _out_i=
         local _out_r=
         local _out_rest=
-        if ! _GETOPTS "" "j e r h a u k s S i r" 1 1 "$@"; then
-            printf "Usage: snt create-host host -a address [-j jumpHost -e expose -h hostHome -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]\\n" >&2
+        if ! _GETOPTS "" "j e r d a u k s S i r" 1 1 "$@"; then
+            printf "Usage: snt create-host host -a address [-j jumpHost -e expose -d homedir -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]\\n" >&2
             return 1
         fi
-        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}" "${_out_h}" "${_out_a}" "${_out_u}" "${_out_k}" "${_out_s}" "${_out_S}" "${_out_i}" "${_out_r}"
+        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}" "${_out_d}" "${_out_a}" "${_out_u}" "${_out_k}" "${_out_s}" "${_out_S}" "${_out_i}" "${_out_r}"
     elif [ "${action}" = "init-host" ]; then
         local _out_f="false"
         local _out_rest=
@@ -905,7 +953,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "v" "" 1 1 "$@"; then
-            printf "Usage: snt compile-pod pod[@host]\\n" >&2
+            printf "Usage: snt compile pod[@host]\\n" >&2
             return 1
         fi
         COMPILE_POD "${_out_rest}" "${_out_v}"

@@ -300,7 +300,7 @@ _PRJ_GEN_INGRESS_CONFIG()
         fi
         if STRING_IS_ALL "${varname}" "A-Z0-9_"; then
             # All CAPS, just substitute it with it's value from cluster-vars.env (added later).
-            variablesAll="${variablesAll}${variablesAll:+, }${varname}"
+            variablesAll="${variablesAll}${variablesAll:+ }${varname}"
         else
             # Not all caps, prefix the variable name with "podname_", as it is defined in cluster-vars.env
             # The actual value substituation will happen in the second sweep.
@@ -630,8 +630,8 @@ _PRJ_GET_DAEMON_LOG2()
 
     hostEnv2="${CLUSTERPATH}/${host}/host-superuser.env"
     if [ ! -f "${hostEnv2}" ]; then
-        PRINT "${hostEnv2} file does not exist." "error" 0
-        return 1
+        PRINT "${hostEnv2} file does not exist, trying for regular user" "warn" 0
+        hostEnv2="${CLUSTERPATH}/${host}/host.env"
     fi
 
     local status=
@@ -1431,7 +1431,7 @@ _PRJ_COMPILE_POD()
                 # Variables which are not all caps are expected to have the pod name as a prefix as defined in cluster-vars.env, because they are pod specific.
                 if STRING_IS_ALL "${varname}" "A-Z0-9_"; then
                     # All CAPS, just substitute it with it's value from cluster-vars.env, added later.
-                    variablesAll="${variablesAll}${variablesAll:+, }${varname}"
+                    variablesAll="${variablesAll}${variablesAll:+ }${varname}"
                 else
                     # Not all caps, prefix the variable name defined in pod.yaml with "podname_", as it is defined in cluster-vars.env
                     # The actual value substituation will happen in the second sweep.
@@ -1447,12 +1447,14 @@ _PRJ_COMPILE_POD()
             PRINT "Host ports auto generated on host '${host}': ${newHostPorts}" "info" 0
         fi
 
-        PRINT "Variable names extracted from pod.yaml and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
+        if [ -n "${variablesAll}" ]; then
+            PRINT "Variable names extracted from pod.yaml and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
+        fi
         # Check so that all variables are defined in cluster-vars.env, if not issue a warning.
         local varname=
         for varname in ${variablesAll}; do
-            if ! grep -q -m 1 "^${varname}=" "${clusterConfig}"; then
-                PRINT "Pod variable ${varname} is not defined in cluster-vars.env" "warning" 0
+            if [ "${varname}" != "DEVMODE" ] && ! grep -q -m 1 "^${varname}=" "${clusterConfig}"; then
+                PRINT "Pod variable \"${varname}\" is not defined in cluster-vars.env" "warning" 0
             fi
         done
 
@@ -1508,7 +1510,7 @@ _PRJ_COMPILE_POD()
 
         # Copy configs into release
         if [ -d "${CLUSTERPATH}/_config/${pod}" ]; then
-            PRINT "Copy configs from cluster into pod release." "info" 0
+            PRINT "Copying pod configs from cluster repo into new pod release when compiling. Note that new/changed configs from the pod repo are not automatically updated into the cluster repo. Run \"snt import-config\" to import from pod repo to cluster repo, then \"snt update-config\" to copy those into an existing pod release." "info" 0
             if ! _PRJ_COPY_POD_CONFIGS "${CLUSTERPATH}" "${host}" "${pod}" "${podVersion}"; then
                 status=1
                 break
@@ -1587,8 +1589,7 @@ _PRJ_CLUSTER_IMPORT_POD_CFG()
     fi
 
     if [ -d "${clusterPodConfigDir}" ]; then
-        PRINT "Cluster config for the pod '${pod}' already exists, will overwrite in 10 seconds... Press ctrl-c to abort!" "warning" 0
-        sleep 10
+        PRINT "Cluster config for the pod '${pod}' already exists, will overwrite." "warning" 0
     fi
 
     mkdir -p "${CLUSTERPATH}/_config"
@@ -1598,7 +1599,7 @@ _PRJ_CLUSTER_IMPORT_POD_CFG()
         return 1
     fi
 
-    PRINT "Configs copied" "info" 0
+    PRINT "Configs copied. New pod releases will get these new configs when compiled. To update configs of an existing pod release run \"snt update-config\"" "info" 0
 
     _PRJ_LOG_C "IMPORT_POD_CFG ${pod}:${configCommit}"
 }
@@ -1650,7 +1651,7 @@ _PRJ_DETACH_POD()
             return 1
         fi
 
-        PRINT "Pod '${pod}' detached from '${host}'" "info" 0
+        PRINT "Pod '${pod}' detached from '${host}'" "ok" 0
     done
 
     # Check if this was the last pod on the hosts, if so suggest to remove any pod configs in the cluster.
@@ -1703,6 +1704,13 @@ _PRJ_ATTACH_POD()
         PRINT "pod.yaml does not exist as: ${podSpec}" "error" 0
         return 1
     fi
+
+    local configCommit=
+    if ! configCommit="$(_UTIL_GET_TAG_DIR "${PODPATH}/${pod}")"; then
+        PRINT "Cannot attach pod when pod is not a git repo." "error" 0
+        return 1
+    fi
+
     local text="$(cat "${podSpec}")"
     local variablesToSubst="$(TEXT_EXTRACT_VARIABLES "${text}")"
     local varname=
@@ -1728,7 +1736,7 @@ _PRJ_ATTACH_POD()
 
     _PRJ_LOG_P "${host}" "${pod}" "ATTACHED"
 
-    PRINT "Pod is now attached" "info" 0
+    PRINT "Pod is now attached" "ok" 0
 
     # Check if this was the first pod on the hosts, if so suggest to also add any pod configs into the cluster.
     local hosts=
@@ -1966,7 +1974,7 @@ JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 
     # Create the host-superuser.env file
     printf "%s\\n" "# Auto generated host.env file which can be used with the Space ssh module.
-# You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
+# You can enter this host as SUPERUSER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
 
 ## SSH specific variables
 # HOST is the public or private IP of the Host.
@@ -2071,7 +2079,7 @@ _PRJ_HOST_INIT()
 _PRJ_HOST_CREATE()
 {
     SPACE_SIGNATURE="hostName jumphost expose hostHome hostAddress user userKey superUser superUserKey internal routerAddress"
-    SPACE_DEP="PRINT _PRJ_DOES_HOST_EXIST _PRJ_LOG_C STRING_TRIM STRING_ITEM_INDEXOF STRING_SUBST"
+    SPACE_DEP="PRINT _PRJ_DOES_HOST_EXIST _PRJ_LOG_C STRING_TRIM STRING_ITEM_INDEXOF STRING_SUBST STRING_IS_ALL"
     SPACE_ENV="CLUSTERPATH"
 
     local host="${1}"
@@ -2083,7 +2091,7 @@ _PRJ_HOST_CREATE()
     local expose="${1}"
     shift
 
-    local hostHome="${1:-cluster-host}"
+    local hostHome="${1:-$host}"
     shift
 
     local hostAddress="${1}"
@@ -2107,6 +2115,12 @@ _PRJ_HOST_CREATE()
     local routerAddress="${1:-}"
     shift
 
+    # Check so host has valid characters
+    if ! STRING_IS_ALL "${host}" "A-Za-z0-9_-"; then
+        PRINT "Host name can only containe [A-Za-z0-9-_] characters." "error" 0
+        return 1
+    fi
+
     if _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
         PRINT "Host ${host} does already exist." "error" 0
         return 1
@@ -2119,6 +2133,7 @@ _PRJ_HOST_CREATE()
     fi
 
     STRING_SUBST "expose" ',' ' ' 1
+    STRING_SUBST "internal" ',' ' ' 1
 
     local port=
     for port in ${expose}; do
@@ -2203,6 +2218,9 @@ PORT=${port}
 # The user on the Host which will be running the pods in rootless mode. This should NOT be the root user.
 USER=${user:-snt}
 
+# Default SSH connect timeout (seconds)
+FLAGS=-oConnectTimeout=30
+
 # The path to the SSH keyfile used for this user to login to this Host.
 KEYFILE=${userKey:-id_rsa}
 
@@ -2227,7 +2245,7 @@ ROUTERADDRESS=${routerAddress}" >"${dir}/host.env"
     # Possibly create the host-superuser.env file
     if [ -n "${superUser}" ]; then
         printf "%s\\n" "# Auto generated host.env file which can be used with the Space ssh module.
-# You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
+# You can enter this host as SUPERUSER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
 
 ## SSH specific variables
 # HOST is the public or private IP of the Host.
@@ -2248,7 +2266,7 @@ JUMPHOST=${jumphost}" >"${dir}/host-superuser.env"
 
     fi
 
-    PRINT "Host ${host} created" "info" 0
+    PRINT "Host ${host} created" "ok" 0
     _PRJ_LOG_C "CREATE_HOST ${host}"
 }
 
@@ -2282,6 +2300,7 @@ _PRJ_CLUSTER_CREATE()
     git init &&
     git add . &&
     git commit -m "Initial" &&
+    PRINT "Cluster repo successfully created" "ok" 0 &&
     _PRJ_LOG_C "CREATED-CLUSTER-PROJECT" || return 1
 }
 
@@ -2360,9 +2379,9 @@ _PRJ_CHECK_PORT_CLASHES()
         # Get all cluster ports on host
         local dir="${CLUSTERPATH}/${host}/pods"
         # Extract clusterPorts from the proxy config lines.
-        local clusterPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
+        local clusterPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
         # Extract hostPorts from the proxy config lines.
-        local hostPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
+        local hostPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
 
         local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
 
@@ -2400,7 +2419,7 @@ _PRJ_GET_FREE_CLUSTERPORT()
     local reservedPorts="${1}"
 
     # Extract clusterPorts from the proxy config lines from all pods on all hosts.
-    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
+    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=60999
     local p=
@@ -2443,7 +2462,7 @@ _PRJ_GET_FREE_HOSTPORT()
     local dir="${CLUSTERPATH}/${host}/pods"
 
     # Extract hostPorts and clusterPorts from the proxy config lines.
-    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
+    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=29999
     local p=
@@ -2497,9 +2516,16 @@ _PRJ_COPY_POD_CONFIGS()
     fi
 
     if ! ( cd "${clusterPath}/_config/${pod}"
-        for config in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*'  |cut -b3-); do
-            if [ ! -d "${config}" ] || [ "${config#_}" != "${config}" ]; then
-                # Not dir or underscore prefixed config, skip it.
+        for config in $(find . -mindepth 1 -maxdepth 1 -not -path './.*'  |cut -b3-); do
+            if [ "${config#_}" != "${config}" ]; then
+                # Underscore prefixed config, skip it.
+                # Such configs are meant for build time operations only, such as for the IngressPod template files.
+                PRINT "Not copying underscored directory ${config}" "info" 0
+                continue
+            fi
+            if [ ! -d "${config}" ]; then
+                # Not a dir, skip it.
+                PRINT "Not copying file ${config}, only directories are copied" "info" 0
                 continue
             fi
             if ! mkdir -p "${clusterPath}/${host}/pods/${pod}/release/${podVersion}/config/${config}"; then
@@ -3157,7 +3183,7 @@ _PRJ_EXTRACT_INGRESS()
     done
 }
 
-# Produce a comma separated string of all hosts to be in the internal routing.
+# Produce a semicolon separated string of all hosts which have ROUTERADDRESS set in their host.env
 _PRJ_GET_ROUTER_HOSTS()
 {
     SPACE_SIGNATURE=""
@@ -3174,6 +3200,7 @@ _PRJ_GET_ROUTER_HOSTS()
         local hostEnv="${CLUSTERPATH}/${host}/host.env"
         local varname=
         local value=
+        # Extract ROUTERADDRESS variable
         local ROUTERADDRESS=
         for varname in ROUTERADDRESS; do
             value="$(grep -m 1 "^${varname}=" "${hostEnv}")"
