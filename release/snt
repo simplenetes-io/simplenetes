@@ -4,7 +4,7 @@
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /cmdline/
 # Use snt as a standalone cmd line tool
@@ -19,7 +19,7 @@ REMOTE_PACK_RELEASEDATA="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pack_release_data/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -56,7 +56,7 @@ _SYNC_REMOTE_PACK_RELEASE_DATA()
     local data=\"\"
 
     # Get the host list
-    local hostFile=\"\${HOSTHOME}/cluster-hosts.txt\"
+    local hostFile=\"\${HOSTHOME}/hosts.conf\"
     local hosts=\"\"
     if [ -f \"\${hostFile}\" ]; then
         hosts=\"\$(cat \"\${hostFile}\")\"
@@ -430,7 +430,7 @@ REMOTE_SET_COMMITCHAIN="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/set_commit_chain/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -683,7 +683,7 @@ REMOTE_ACQUIRE_LOCK="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/acquire_lock/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -1035,7 +1035,7 @@ REMOTE_RELEASE_LOCK="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/release_lock/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -1344,7 +1344,7 @@ REMOTE_GET_HOSTMETADATA="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/get_host_metadata/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -1596,7 +1596,7 @@ REMOTE_UPLOAD_ARCHIVE="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/upload_archive/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -1909,7 +1909,7 @@ REMOTE_UNPACK_ARCHIVE="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/unpack_archive/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -2152,10 +2152,10 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
 
     cd \"\${archiveDir}\"
 
-    # Check the cluster-hosts.txt file
-    if [ -f \"cluster-hosts.txt\" ]; then
-        PRINT \"Update cluster-hosts.txt\" \"info\" 0
-        mv -f \"cluster-hosts.txt\" \"\${HOSTHOME}\"
+    # Check the hosts.conf file
+    if [ -f \"hosts.conf\" ]; then
+        PRINT \"Update hosts.conf\" \"info\" 0
+        mv -f \"hosts.conf\" \"\${HOSTHOME}\"
     fi
 
     if [ ! -d \"pods\" ]; then
@@ -2234,7 +2234,7 @@ _SYNC_REMOTE_UNPACK_ARCHIVE2()
                 if [ \"\${isResumed}\" = \"0\" ]; then
                     # Empty the live dir
                     ( cd \"\${dir}\" && ls -A |xargs rm -rf )
-                    rm \"\${chksumFile}\"
+                    rm -f \"\${chksumFile}\"
                 fi
 
                 # mv new files over
@@ -2362,7 +2362,7 @@ REMOTE_INIT_HOST="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/init_host/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -2401,6 +2401,7 @@ _REMOTE_INIT_HOST()
     fi
 
     mkdir -p \"\${HOSTHOME}/pods\"
+    printf \"\${clusterID}\" >\"\${file}\"
 
     # Get the config.json on STDIN
     local content=\"\$(cat)\"
@@ -2409,6 +2410,8 @@ _REMOTE_INIT_HOST()
         mkdir -p \"\${HOME}/.docker\"
         printf \"%s\\n\" \"\${content}\" >\"\${HOME}/.docker/config.json\"
     fi
+
+    PRINT \"Host successfully inited at \${HOSTHOME} for cluster \${clusterID}.\" \"ok\" 0
 }
 
 PRINT()
@@ -2680,7 +2683,7 @@ REMOTE_HOST_SETUP="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/setup_host/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -2815,6 +2818,10 @@ _REMOTE_HOST_SETUP()
     if [ ! -f \"\${daemonFile}\" ]; then
         # TODO
         PRINT \"Downloading daemon binary\" \"info\" 0
+        # TODO
+        wget https://github.com/simpletenes/sntd/releases/tag/1.0.0
+        chmod +x sntd
+        sudo mv sntd \"\${daemonFile}\"
         binaryUpdated=\"true\"
         return 0
     else
@@ -3423,7 +3430,7 @@ REMOTE_LOGS="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/logs/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -3751,7 +3758,7 @@ REMOTE_DAEMON_LOG="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/daemon_log/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -3771,7 +3778,7 @@ _REMOTE_DAEMON_LOG()
 {
     local _SPACE_NAME=\"_REMOTE_DAEMON_LOG\"
 
-    journactl -u sntd
+    journalctl -u sntd
 }
 
 main()
@@ -3817,7 +3824,7 @@ REMOTE_CREATE_SUPERUSER="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/create_superuser/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -4296,7 +4303,7 @@ REMOTE_DISABLE_ROOT="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/disable_root/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -4608,7 +4615,7 @@ REMOTE_SIGNAL="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/signal/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -4917,7 +4924,7 @@ REMOTE_ACTION="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/action/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -5226,7 +5233,7 @@ REMOTE_POD_STATUS="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pod_status/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -5546,7 +5553,7 @@ REMOTE_POD_SHELL="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pod_shell/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -5865,7 +5872,7 @@ REMOTE_HOST_SHELL="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.3.0 | https://space.sh
+#  version: 1.4.0 | https://space.sh
 #
 # Node: /_remote_plumbing/host_shell/
 # The cluster management targets are used to sync files with hosts in the cluster.
@@ -6190,28 +6197,30 @@ SNT_CMDLINE()
 
     local oldCwd="${PWD}"
 
-    # Check for cluster-id.txt, upwards and cd into that dir so that snt becomes more flexible in where users execute it from.
-    # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH=$PWD, and we allow to check upward for a cluster-id.txt
-    local dots="./"
-    if [ ! -f "cluster-id.txt" ] && [ "${CLUSTERPATH}" = "${PWD}" ]; then
-        PRINT "CLUSTERPATH not valid, searching upwards for cluster-id.txt" "debug"
-        while true; do
-            while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
-                dots="../${dots}"
-                if [ -f "${dots}/cluster-id.txt" ]; then
-                    # Found it
-                    CLUSTERPATH="$(FILE_REALPATH "${dots}")"
-                    PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug"
-                    if [ ! -d "${PODPATH}" ]; then
-                        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
-                        PRINT "Setting new PODPATH: ${PODPATH}" "debug"
+    if [ "${1:-}" != "create-cluster" ]; then
+        # Check for cluster-id.txt, upwards and cd into that dir so that snt becomes more flexible in where users execute it from.
+        # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH=$PWD, and we allow to check upward for a cluster-id.txt
+        local dots="./"
+        if [ ! -f "cluster-id.txt" ] && [ "${CLUSTERPATH}" = "${PWD}" ]; then
+            PRINT "CLUSTERPATH not valid, searching upwards for cluster-id.txt" "debug"
+            while true; do
+                while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
+                    dots="../${dots}"
+                    if [ -f "${dots}/cluster-id.txt" ]; then
+                        # Found it
+                        CLUSTERPATH="$(FILE_REALPATH "${dots}")"
+                        PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug"
+                        if [ ! -d "${PODPATH}" ]; then
+                            PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
+                            PRINT "Setting new PODPATH: ${PODPATH}" "debug"
+                        fi
+                        break 2
                     fi
-                    break 2
-                fi
+                done
+                PRINT "No cluster project detected, cannot continue" "error" 0
+                return 1
             done
-            PRINT "No cluster project detected, cannot continue" "error" 0
-            return 1
-        done
+        fi
     fi
 
     local status=
@@ -6249,19 +6258,23 @@ USAGE()
     import-config pod
         Import config templates from pod repo into the cluster project.
 
-    create-host host -a address [-j jumpHost -e expose -h hostHome -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]
+    create-host host -a address [-j jumpHost -e expose -d hostHome -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]
         Create a host in the cluster repo by the name 'host'.
         -a host IP:PORT (required).
-            If host is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead.
+            If host is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead,
+            which is only useful for when working with a local dev-cluster.
 
         -j jumphost (optional)
             an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
 
         -e expose (optional)
-            can be a comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
+            Comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
+            The ports listed here are automatically exposed in the firewall when running setup-host.
+            The list can later be modified in the host.env file, and snt setup-host must be run again.
 
-        -h hostHome (optional)
-            can be specified as the host cluster home dir.
+        -d home directory (optional)
+            Optionally specify the host's home dir on the server.
+            The default is the host name.
 
         -u username (optional)
             If set then either the regular user already exists on the host or we just set the desired name of the regular user.
@@ -6276,12 +6289,17 @@ USAGE()
             If superuser is set then also the keyfile can be set. If not set it defaults to 'id_rsa_super', which must be placed in the host directory.
 
         -i internal (optional)
-            Networks which are considered local. Used for allowing hosts on the same network to connect.
+            Comma separated list of networks which are considered local.
+            Used for allowing hosts on the same network to connect to each other.
+            The networks listed here are automatically configured in the host firewall when running setup-host.
+            Default is "192.168.0.0/16,10.0.0.0/8,172.16.0.0/11"
+            The list can later be modified in the host.env file, and snt setup-host must be run again.
 
         -r routeraddress (optional)
             The IP:PORT of the router proxy on the host.
             This address is used internally by the proxies and is is the address
             of the proxy. Usually it is \"internalIP:32767\".
+            When working with a local dev-cluster with a single host set it to \"localhost:32767\" or \"127.0.0.1:32767\".
 
     create-superuser host [-k rootkeyfile]
         Login as root on the host and create the super user.
@@ -6291,9 +6309,10 @@ USAGE()
         Use the super user account to disable the root login on a host.
 
     setup-host host
-        Setup the host using the superuser
+        Setup the host using the superuser.
         Creates the regular user, installs podman, configures firewalld, installs the daemon, etc.
         This command is idempotent and is safe to run multiple times.
+        If the EXPOSE or INTERNAL variables in host.env are changed then this action need to be run.
 
     init-host host
         Initialize a host to be part of the cluster by writing the cluster-id.txt file to hosthome.
@@ -6375,6 +6394,10 @@ USAGE()
             Comma separated string of clusterPorts to exclude from the Ingress configuration
 
     set-host-state host -s active|inactive|disabled
+        Updates the host's host.state file.
+        active   - has ingress, internal proxy routing and are synced.
+        inactive - no ingress, no internal proxy routing but are still synced.
+        disabled - no ingress, no internal proxy routing and not synced. Just ignored.
 
     get-host-state host
         Get the state of a host
@@ -6398,7 +6421,7 @@ USAGE()
 
     signal pod[:version][@host] [containers]
         Signal a pod on a specific host or on all attached hosts.
-        Optionally specify which containers to signal, defualt is all containers in the pod.
+        Optionally specify which containers to signal, default is all containers in the pod.
 
     delete pod[:version][@host]
         Delete pod releases which are in the \"removed\" state.
@@ -6415,7 +6438,8 @@ USAGE()
         -f if set will force sync changes to cluster
 
     daemon-log [host]
-        Get the daemon log
+        Get the daemon log.
+        This requires superuser privileges.
 
     pod-shell pod[:version][@host] [container] [-B]
         Step into a shell inside a container of a pod.
@@ -6489,7 +6513,7 @@ _SNT_CMDLINE()
     elif [ "${action}" = "create-host" ]; then
         local _out_j=
         local _out_e=
-        local _out_h=
+        local _out_d=
         local _out_a=
         local _out_u=
         local _out_k=
@@ -6498,11 +6522,11 @@ _SNT_CMDLINE()
         local _out_i=
         local _out_r=
         local _out_rest=
-        if ! _GETOPTS "" "j e r h a u k s S i r" 1 1 "$@"; then
-            printf "Usage: snt create-host host -a address [-j jumpHost -e expose -h hostHome -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]\\n" >&2
+        if ! _GETOPTS "" "j e r d a u k s S i r" 1 1 "$@"; then
+            printf "Usage: snt create-host host -a address [-j jumpHost -e expose -d homedir -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]\\n" >&2
             return 1
         fi
-        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}" "${_out_h}" "${_out_a}" "${_out_u}" "${_out_k}" "${_out_s}" "${_out_S}" "${_out_i}" "${_out_r}"
+        HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}" "${_out_d}" "${_out_a}" "${_out_u}" "${_out_k}" "${_out_s}" "${_out_S}" "${_out_i}" "${_out_r}"
     elif [ "${action}" = "init-host" ]; then
         local _out_f="false"
         local _out_rest=
@@ -6589,7 +6613,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "v" "" 1 1 "$@"; then
-            printf "Usage: snt compile-pod pod[@host]\\n" >&2
+            printf "Usage: snt compile pod[@host]\\n" >&2
             return 1
         fi
         COMPILE_POD "${_out_rest}" "${_out_v}"
@@ -7543,7 +7567,7 @@ _PRJ_GEN_INGRESS_CONFIG()
         fi
         if STRING_IS_ALL "${varname}" "A-Z0-9_"; then
             # All CAPS, just substitute it with it's value from cluster-vars.env (added later).
-            variablesAll="${variablesAll}${variablesAll:+, }${varname}"
+            variablesAll="${variablesAll}${variablesAll:+ }${varname}"
         else
             # Not all caps, prefix the variable name with "podname_", as it is defined in cluster-vars.env
             # The actual value substituation will happen in the second sweep.
@@ -8073,7 +8097,7 @@ _PRJ_COMPILE_POD()
                 # Variables which are not all caps are expected to have the pod name as a prefix as defined in cluster-vars.env, because they are pod specific.
                 if STRING_IS_ALL "${varname}" "A-Z0-9_"; then
                     # All CAPS, just substitute it with it's value from cluster-vars.env, added later.
-                    variablesAll="${variablesAll}${variablesAll:+, }${varname}"
+                    variablesAll="${variablesAll}${variablesAll:+ }${varname}"
                 else
                     # Not all caps, prefix the variable name defined in pod.yaml with "podname_", as it is defined in cluster-vars.env
                     # The actual value substituation will happen in the second sweep.
@@ -8089,12 +8113,14 @@ _PRJ_COMPILE_POD()
             PRINT "Host ports auto generated on host '${host}': ${newHostPorts}" "info" 0
         fi
 
-        PRINT "Variable names extracted from pod.yaml and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
+        if [ -n "${variablesAll}" ]; then
+            PRINT "Variable names extracted from pod.yaml and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
+        fi
         # Check so that all variables are defined in cluster-vars.env, if not issue a warning.
         local varname=
         for varname in ${variablesAll}; do
-            if ! grep -q -m 1 "^${varname}=" "${clusterConfig}"; then
-                PRINT "Pod variable ${varname} is not defined in cluster-vars.env" "warning" 0
+            if [ "${varname}" != "DEVMODE" ] && ! grep -q -m 1 "^${varname}=" "${clusterConfig}"; then
+                PRINT "Pod variable \"${varname}\" is not defined in cluster-vars.env" "warning" 0
             fi
         done
 
@@ -8150,7 +8176,7 @@ _PRJ_COMPILE_POD()
 
         # Copy configs into release
         if [ -d "${CLUSTERPATH}/_config/${pod}" ]; then
-            PRINT "Copy configs from cluster into pod release." "info" 0
+            PRINT "Copying pod configs from cluster repo into new pod release when compiling. Note that new/changed configs from the pod repo are not automatically updated into the cluster repo. Run \"snt import-config\" to import from pod repo to cluster repo, then \"snt update-config\" to copy those into an existing pod release." "info" 0
             if ! _PRJ_COPY_POD_CONFIGS "${CLUSTERPATH}" "${host}" "${pod}" "${podVersion}"; then
                 status=1
                 break
@@ -8241,7 +8267,7 @@ _PRJ_DETACH_POD()
             return 1
         fi
 
-        PRINT "Pod '${pod}' detached from '${host}'" "info" 0
+        PRINT "Pod '${pod}' detached from '${host}'" "ok" 0
     done
 
     # Check if this was the last pod on the hosts, if so suggest to remove any pod configs in the cluster.
@@ -8292,6 +8318,13 @@ _PRJ_ATTACH_POD()
         PRINT "pod.yaml does not exist as: ${podSpec}" "error" 0
         return 1
     fi
+
+    local configCommit=
+    if ! configCommit="$(_UTIL_GET_TAG_DIR "${PODPATH}/${pod}")"; then
+        PRINT "Cannot attach pod when pod is not a git repo." "error" 0
+        return 1
+    fi
+
     local text="$(cat "${podSpec}")"
     local variablesToSubst="$(TEXT_EXTRACT_VARIABLES "${text}")"
     local varname=
@@ -8317,7 +8350,7 @@ _PRJ_ATTACH_POD()
 
     _PRJ_LOG_P "${host}" "${pod}" "ATTACHED"
 
-    PRINT "Pod is now attached" "info" 0
+    PRINT "Pod is now attached" "ok" 0
 
     # Check if this was the first pod on the hosts, if so suggest to also add any pod configs into the cluster.
     local hosts=
@@ -8596,7 +8629,7 @@ JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 
     # Create the host-superuser.env file
     printf "%s\\n" "# Auto generated host.env file which can be used with the Space ssh module.
-# You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
+# You can enter this host as SUPERUSER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
 
 ## SSH specific variables
 # HOST is the public or private IP of the Host.
@@ -8707,7 +8740,7 @@ _PRJ_HOST_CREATE()
     local expose="${1}"
     shift
 
-    local hostHome="${1:-cluster-host}"
+    local hostHome="${1:-$host}"
     shift
 
     local hostAddress="${1}"
@@ -8731,6 +8764,12 @@ _PRJ_HOST_CREATE()
     local routerAddress="${1:-}"
     shift
 
+    # Check so host has valid characters
+    if ! STRING_IS_ALL "${host}" "A-Za-z0-9_-"; then
+        PRINT "Host name can only containe [A-Za-z0-9-_] characters." "error" 0
+        return 1
+    fi
+
     if _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
         PRINT "Host ${host} does already exist." "error" 0
         return 1
@@ -8743,6 +8782,7 @@ _PRJ_HOST_CREATE()
     fi
 
     STRING_SUBST "expose" ',' ' ' 1
+    STRING_SUBST "internal" ',' ' ' 1
 
     local port=
     for port in ${expose}; do
@@ -8827,6 +8867,9 @@ PORT=${port}
 # The user on the Host which will be running the pods in rootless mode. This should NOT be the root user.
 USER=${user:-snt}
 
+# Default SSH connect timeout (seconds)
+FLAGS=-oConnectTimeout=30
+
 # The path to the SSH keyfile used for this user to login to this Host.
 KEYFILE=${userKey:-id_rsa}
 
@@ -8851,7 +8894,7 @@ ROUTERADDRESS=${routerAddress}" >"${dir}/host.env"
     # Possibly create the host-superuser.env file
     if [ -n "${superUser}" ]; then
         printf "%s\\n" "# Auto generated host.env file which can be used with the Space ssh module.
-# You can enter this host as USER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
+# You can enter this host as SUPERUSER by running \"space -m ssh /ssh/ -e SSHHOSTFILE=host-superuser.env\".
 
 ## SSH specific variables
 # HOST is the public or private IP of the Host.
@@ -8872,7 +8915,7 @@ JUMPHOST=${jumphost}" >"${dir}/host-superuser.env"
 
     fi
 
-    PRINT "Host ${host} created" "info" 0
+    PRINT "Host ${host} created" "ok" 0
     _PRJ_LOG_C "CREATE_HOST ${host}"
 }
 
@@ -8907,8 +8950,7 @@ _PRJ_CLUSTER_IMPORT_POD_CFG()
     fi
 
     if [ -d "${clusterPodConfigDir}" ]; then
-        PRINT "Cluster config for the pod '${pod}' already exists, will overwrite in 10 seconds... Press ctrl-c to abort!" "warning" 0
-        sleep 10
+        PRINT "Cluster config for the pod '${pod}' already exists, will overwrite." "warning" 0
     fi
 
     mkdir -p "${CLUSTERPATH}/_config"
@@ -8918,7 +8960,7 @@ _PRJ_CLUSTER_IMPORT_POD_CFG()
         return 1
     fi
 
-    PRINT "Configs copied" "info" 0
+    PRINT "Configs copied. New pod releases will get these new configs when compiled. To update configs of an existing pod release run \"snt update-config\"" "info" 0
 
     _PRJ_LOG_C "IMPORT_POD_CFG ${pod}:${configCommit}"
 }
@@ -8958,6 +9000,7 @@ _PRJ_CLUSTER_CREATE()
     git init &&
     git add . &&
     git commit -m "Initial" &&
+    PRINT "Cluster repo successfully created" "ok" 0 &&
     _PRJ_LOG_C "CREATED-CLUSTER-PROJECT" || return 1
 }
 
@@ -9190,7 +9233,7 @@ _SYNC_RUN()
     ## We will do this in parallel and if any host fails at this stage
     ## that will not abort the overall process but will be reported in the output.
     ## If a host fails then this sync should be run again or that host should be taken out of rotation.
-    ## Syncs are alwaus idempotent, can be run multiple times.
+    ## Syncs are always idempotent, can be run multiple times.
 
     local timeout="$(($(date +%s)+180))"
     local pid=
@@ -10814,7 +10857,7 @@ _UTIL_GET_TAG_DIR()
 
     local commitId=
     if ! commitId="$(cd "${dir}" && git rev-list -1 HEAD -- ./)"; then
-        PRINT "${dir} is not comitted." "warning" 0
+        PRINT "${dir} is not committed." "warning" 0
         printf "%s\\n" "<unknown>"
         return 0
     fi
@@ -10851,9 +10894,16 @@ _PRJ_COPY_POD_CONFIGS()
     fi
 
     if ! ( cd "${clusterPath}/_config/${pod}"
-        for config in $(find . -mindepth 1 -maxdepth 1 -type d -not -path './.*'  |cut -b3-); do
-            if [ ! -d "${config}" ] || [ "${config#_}" != "${config}" ]; then
-                # Not dir or underscore prefixed config, skip it.
+        for config in $(find . -mindepth 1 -maxdepth 1 -not -path './.*'  |cut -b3-); do
+            if [ "${config#_}" != "${config}" ]; then
+                # Underscore prefixed config, skip it.
+                # Such configs are meant for build time operations only, such as for the IngressPod template files.
+                PRINT "Not copying underscored directory ${config}" "info" 0
+                continue
+            fi
+            if [ ! -d "${config}" ]; then
+                # Not a dir, skip it.
+                PRINT "Not copying file ${config}, only directories are copied" "info" 0
                 continue
             fi
             if ! mkdir -p "${clusterPath}/${host}/pods/${pod}/release/${podVersion}/config/${config}"; then
@@ -10994,7 +11044,7 @@ _PRJ_GET_FREE_HOSTPORT()
     local dir="${CLUSTERPATH}/${host}/pods"
 
     # Extract hostPorts and clusterPorts from the proxy config lines.
-    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
+    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=29999
     local p=
@@ -11028,7 +11078,7 @@ _PRJ_GET_FREE_CLUSTERPORT()
     local reservedPorts="${1}"
 
     # Extract clusterPorts from the proxy config lines from all pods on all hosts.
-    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
+    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=60999
     local p=
@@ -11222,7 +11272,7 @@ _REMOTE_EXEC()
             SSH "" "" "" "" "" "${hostEnv}" "" "${RUN}" "${HOSTHOME}" "$@"
         fi
     else
-        # Run the space target to do this. This is usually only done in dev mode.
+        # Run the space target to do this. This is usually only done in dev mode when we are working with the snt source.
         if [ "${HOST}" = "local" ]; then
             space -L "${SPACE_LOG_LEVEL}" -f "${0}" /_remote_plumbing/${action}/ -- "${HOSTHOME}" "$@"
         else
@@ -11536,9 +11586,9 @@ _PRJ_CHECK_PORT_CLASHES()
         # Get all cluster ports on host
         local dir="${CLUSTERPATH}/${host}/pods"
         # Extract clusterPorts from the proxy config lines.
-        local clusterPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
+        local clusterPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
         # Extract hostPorts from the proxy config lines.
-        local hostPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.proxy.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
+        local hostPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
 
         local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
 
@@ -11647,8 +11697,8 @@ _PRJ_GET_DAEMON_LOG2()
 
     hostEnv2="${CLUSTERPATH}/${host}/host-superuser.env"
     if [ ! -f "${hostEnv2}" ]; then
-        PRINT "${hostEnv2} file does not exist." "error" 0
-        return 1
+        PRINT "${hostEnv2} file does not exist, trying for regular user" "warn" 0
+        hostEnv2="${CLUSTERPATH}/${host}/host.env"
     fi
 
     local status=
@@ -12167,7 +12217,7 @@ FILE_DIR_CHECKSUM_CONTENT()
         return 1
     fi
 
-    (cd "${dir}" && find . -type f -exec ${_SHASUMBIN} {} \; |sort -k2 |${_SHASUMBIN} |cut -f 1 -d' ')
+    (cd "${dir}" && find . -type f -exec ${_SHASUMBIN} {} \; | sort -k2 | ${_SHASUMBIN} | cut -f 1 -d' ')
 }
 
 SSH()
@@ -12372,7 +12422,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
 
     PRINT "Using tmp dir ${tmpDir}" "debug"
 
-    # Compare cluster-hosts.txt on host with what we have locally.
+    # Compare hosts.conf on host with what we have locally.
     local hostsRouter="$(_PRJ_GET_ROUTER_HOSTS)"
     local updateHosts="0"
     local item=
@@ -12393,7 +12443,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
         local newline="
 "
         STRING_SUBST "hostsRouter" ";" "${newline}"
-        printf "%s\\n" "${hostsRouter}"  >"${tmpDir}/cluster-hosts.txt"
+        printf "%s\\n" "${hostsRouter}"  >"${tmpDir}/hosts.conf"
     fi
 
     #### PODS
@@ -12781,6 +12831,7 @@ _PRJ_GET_ROUTER_HOSTS()
         local hostEnv="${CLUSTERPATH}/${host}/host.env"
         local varname=
         local value=
+        # Extract ROUTERADDRESS variable
         local ROUTERADDRESS=
         for varname in ROUTERADDRESS; do
             value="$(grep -m 1 "^${varname}=" "${hostEnv}")"
