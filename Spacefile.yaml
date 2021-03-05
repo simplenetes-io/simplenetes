@@ -1,5 +1,5 @@
-@clone: conf file string text ssh os
-@source: @{DIR}/project.sh @{DIR}/sync.sh @{DIR}/remote.sh @{DIR}/release.sh @{DIR}/utils.sh
+@clone: conf:1.0.4 file:1.6.0 string:1.4.0 text:1.1.1 ssh:2.0.0 os:1.3.3
+@source: @{DIR}/include/project.sh @{DIR}/include/sync.sh @{DIR}/include/remote.sh @{DIR}/include/release.sh @{DIR}/include/utils.sh
 
 _info:
     title: Simplenetes version 0.1
