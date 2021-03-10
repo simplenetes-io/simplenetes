@@ -3,7 +3,7 @@
 
 # expects and assigns to:
 #  _out_exitCode-1: highest exit code for all processes
-#  _out_exitCodes: list of pids and their exit codes as "pid1:exxitCode1 pid2:exitCode2 etc"
+#  _out_exitCodes: list of pids and their exit codes as "pid1:exitCode1 pid2:exitCode2 etc"
 #  _wait_timeout: absolute unix time of when to timeout
 # Exit code 0 if all processes ended with success or still waiting.
 #   check _out_exitCode >-1 to know if done

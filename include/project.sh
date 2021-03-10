@@ -503,8 +503,7 @@ _PRJ_GET_POD_STATUS()
                 fi
             fi
         else
-            # General info
-            # TODO: how to present this
+            # Show pod current status
             local status=
             if status="$(_PRJ_GET_POD_STATUS2 "${host}" "${pod}" "${podVersion}" "status")"; then
                 printf "host: %s\\n%s\\n" "${host}" "${status}"
@@ -524,6 +523,58 @@ _PRJ_GET_POD_STATUS()
         fi
         printf "%s/%s\\n" "${countReady}" "${totalCount}"
     fi
+}
+
+# Get pod static info
+_PRJ_GET_POD_INFO()
+{
+    SPACE_SIGNATURE="podTriple"
+    SPACE_DEP="_PRJ_LIST_ATTACHEMENTS PRINT _PRJ_DOES_HOST_EXIST _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE _PRJ_GET_POD_INFO2"
+    SPACE_ENV="CLUSTERPATH"
+
+    local podTriple="${1}"
+    shift
+
+    local pod=
+    local version=
+    local host=
+    if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
+        return 1
+    fi
+
+    local hosts=
+    if [ -n "${host}" ]; then
+        if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+            PRINT "Host ${host} does not exist" "error" 0
+            return 1
+        fi
+
+        hosts="${host}"
+    else
+        hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
+    fi
+    unset host
+
+    if [ -z "${hosts}" ]; then
+        PRINT "Pod is not attached to any host." "warning" 0
+        return 1
+    fi
+
+    local podVersion=
+    local host=
+    for host in ${hosts}; do
+        if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            continue
+        fi
+
+        # Show pod current info
+        local info=
+        if info="$(_PRJ_GET_POD_INFO2 "${host}" "${pod}" "${podVersion}")"; then
+            printf "host: %s\\n%s\\n" "${host}" "${info}"
+        else
+            printf "host: %s\\npod: %s\\ninfo: unknown\\n" "${host}" "${pod}-${podVersion}"
+        fi
+    done
 }
 
 _PRJ_GET_HOST_STATE()
@@ -609,6 +660,39 @@ _PRJ_GET_POD_STATUS2()
     fi
 
     PRINT "Could not get pod status from host." "error" 0
+
+    # Failed
+    return "${status}"
+}
+
+_PRJ_GET_POD_INFO2()
+{
+    SPACE_SIGNATURE="host pod podVersion"
+    SPACE_DEP="_REMOTE_EXEC PRINT _PRJ_DOES_HOST_EXIST"
+    SPACE_ENV="CLUSTERPATH"
+
+    local host="${1}"
+    shift
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+        PRINT "Host ${host} does not exist." "error" 0
+        return 1
+    fi
+
+    local status=
+    _REMOTE_EXEC "${host}" "pod_info" "${pod}" "${podVersion}"
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        return 0
+    fi
+
+    PRINT "Could not get pod info from host." "error" 0
 
     # Failed
     return "${status}"
@@ -1324,6 +1408,43 @@ _PRJ_COMPILE_POD()
         return 0
     fi
 
+    # Check so that pod repo is git repo. Possibly clone it if missing.
+    local podDir="$(FILE_REALPATH "${PODPATH}/${pod}")"
+    if [ ! -d "${podDir}" ]; then
+        # For each host check if git.url is provided then match it against the pod repo.
+        # If not existing, create it.
+        local gitUrl=
+        local host=
+        for host in ${hosts}; do
+            local hostPodGitFile="${CLUSTERPATH}/${host}/pods/${pod}/git.url"
+            if [ -f "${hostPodGitFile}" ]; then
+                gitUrl="$(cat "${hostPodGitFile}")"
+                if [ -n "${gitUrl}" ]; then
+                    break
+                fi
+            fi
+        done
+        # Check if to clone
+        if [ -n "${gitUrl}" ]; then
+            if ! git clone "${gitUrl}" "${podDir}"; then
+                PRINT "Could not git clone pod ${gitUrl}" "error" 0
+                return 1
+            fi
+        else
+            PRINT "Pod does not exist as ${podDir}. You need to clone it there." "error" 0
+            return 1
+        fi
+    else
+        # Pod dir does exist
+        if [ ! -d "${podDir}/.git" ]; then
+            PRINT "Cannot compile pod when pod is not a git repo: ${podDir}." "error" 0
+            return 1
+        fi
+    fi
+
+    local url=
+    url="$(cd "${podDir}" && git config --get remote.origin.url)"
+
     local podSpec="$(FILE_REALPATH "${PODPATH}/${pod}/pod.yaml")"
 
     local podCommit=
@@ -1363,8 +1484,9 @@ _PRJ_COMPILE_POD()
     local varname=
     for varname in ${variablesToSubst}; do
         # Do sanity check on the variable name extracted.
-        if ! STRING_IS_ALL "${varname}" "A-Za-z0-9_" || [ "${varname#[_0-9]}" != "${varname}" ]; then
-            PRINT "Variable name '${varname}' contains illegal characters. Only [A-Za-z0-9_] are allowed, and cannot begin with underscore or digit." "error" 0
+        # underscored variables pass through here, but are ignored later.
+        if ! STRING_IS_ALL "${varname}" "A-Za-z0-9_" || [ "${varname#[0-9]}" != "${varname}" ]; then
+            PRINT "Variable name '${varname}' contains illegal characters. Only [A-Za-z0-9_] are allowed, and cannot begin with a digit." "error" 0
             return 1
         fi
         if [ "${varname#CLUSTERPORTAUTO}" != "${varname}" ]; then
@@ -1388,6 +1510,34 @@ _PRJ_COMPILE_POD()
     local podsCompiled=""  # Keep track of all pods compiled so we can remove them if we encounter an error.
     local host=
     for host in ${hosts}; do
+        PRINT "Begin compile pod ${pod} for host ${host}" "info" 0
+
+        # For each host check if git.url is provided then match it against the pod repo.
+        # If not existing, create it.
+        local hostPodGitFile="${CLUSTERPATH}/${host}/pods/${pod}/git.url"
+        local url2=
+        if [ -f "${hostPodGitFile}" ]; then
+            url2="$(cat "${hostPodGitFile}")"
+        fi
+        if [ -n "${url}" ]; then
+            if [ -n "${url2}" ] && [ "${url}" != "${url2}" ]; then
+                PRINT "Git url \"${url}\" of pod does not match the attached pod git url \"${url2}\" on host: ${host}" "error" 0
+                status=1
+                break
+            fi
+            if [ -z "${url2}" ]; then
+                # Create git.url file
+                PRINT "Set git.url of ${host}/pods/${pod}, since it was missing." "info" 0
+                printf "%s\\n" "${url}" >"${hostPodGitFile}"
+            fi
+        else
+            if [ -n "${url2}" ]; then
+                PRINT "Git url \"${url}\" of pod does not match the attached pod git url \"${url2}\" on host: ${host}" "error" 0
+                status=1
+                break
+            fi
+        fi
+
         # Perform variable substitution
         ## 1. Extract variables used in pod.yaml file
         ## 2. Inspect those to see if any are ${HOSTPORTAUTOxyz}, then for each 'xyz' we find a free host port on the host to assign that variable.
@@ -1410,6 +1560,10 @@ _PRJ_COMPILE_POD()
         local newHostPorts=""       # To keep track of already assigned host ports
         local varname=
         for varname in ${variablesToSubst}; do
+            # Skip underscored variables and podVersion which is automatically provided by podc.
+            if [ "${varname#_}" != "${varname}" ] || [ "${varname}" = "podVersion" ]; then
+                continue
+            fi
             if [ "${varname#HOSTPORTAUTO}" != "${varname}" ]; then
                 # This is an auto host port assignment,
                 # we need to find a free port and assign the variable.
@@ -1434,7 +1588,7 @@ _PRJ_COMPILE_POD()
                     variablesAll="${variablesAll}${variablesAll:+ }${varname}"
                 else
                     # Not all caps, prefix the variable name defined in pod.yaml with "podname_", as it is defined in cluster-vars.env
-                    # The actual value substituation will happen in the second sweep.
+                    # The actual value substitution will happen in the second sweep.
                     values="${values}${values:+${newline}}${varname}=\$\{${pod}_${varname}\}"
                     # Save the variable name to subst for the second sweep
                     variablesToSubst2="${variablesToSubst2}${variablesToSubst2:+ }${pod}_${varname}"
@@ -1447,13 +1601,14 @@ _PRJ_COMPILE_POD()
             PRINT "Host ports auto generated on host '${host}': ${newHostPorts}" "info" 0
         fi
 
-        if [ -n "${variablesAll}" ]; then
-            PRINT "Variable names extracted from pod.yaml and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
-        fi
         # Check so that all variables are defined in cluster-vars.env, if not issue a warning.
         local varname=
         for varname in ${variablesAll}; do
-            if [ "${varname}" != "DEVMODE" ] && ! grep -q -m 1 "^${varname}=" "${clusterConfig}"; then
+            # Do not warn about DEVMODE
+            if [ "${varname}" = "DEVMODE" ]; then
+                continue
+            fi
+            if ! grep -q -m 1 "^${varname}=" "${clusterConfig}"; then
                 PRINT "Pod variable \"${varname}\" is not defined in cluster-vars.env" "warning" 0
             fi
         done
@@ -1476,12 +1631,14 @@ _PRJ_COMPILE_POD()
 
         if [ -z "${podVersion}" ]; then
             PRINT "podVersion is missing. Must be on semver format (major.minor.patch[-tag])." "error" 0
-            return 1
+            state=1
+            break
         fi
 
         if [ -n "${expectedPodVersion}" ] && [ "${expectedPodVersion}" != "${podVersion}" ]; then
             PRINT "Pod source version ${podVersion} does not match the expected version ${expectedPodVersion}" "error" 0
-            return 1
+            state=1
+            break
         fi
 
         local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
@@ -1666,11 +1823,14 @@ _PRJ_DETACH_POD()
 
 _PRJ_ATTACH_POD()
 {
-    SPACE_SIGNATURE="podTuple"
+    SPACE_SIGNATURE="podTuple [gitUrl]"
     SPACE_DEP="PRINT _PRJ_DOES_HOST_EXIST _PRJ_IS_POD_ATTACHED _PRJ_LOG_P _PRJ_LIST_ATTACHEMENTS STRING_IS_ALL _PRJ_SPLIT_POD_TRIPLE FILE_REALPATH TEXT_EXTRACT_VARIABLES _PRJ_CLUSTER_IMPORT_POD_CFG"
     SPACE_ENV="CLUSTERPATH PODPATH"
 
     local podTuple="${1}"
+    shift
+
+    local gitUrl="${1:-}"
 
     local pod=
     local version=
@@ -1699,15 +1859,39 @@ _PRJ_ATTACH_POD()
         return 1
     fi
 
+    local podDir="$(FILE_REALPATH "${PODPATH}/${pod}")"
+    if [ ! -d "${podDir}" ]; then
+        # Check if to clone
+        if [ -n "${gitUrl}" ]; then
+            if ! git clone "${gitUrl}" "${podDir}"; then
+                PRINT "Could not git clone pod ${gitUrl}" "error" 0
+                return 1
+            fi
+        else
+            PRINT "Pod does not exist as ${podDir}. Try providing the git url to have it cloned." "error" 0
+            return 1
+        fi
+    else
+        # Pod dir does exist
+        if [ ! -d "${podDir}/.git" ]; then
+            PRINT "Cannot attach pod when pod is not a git repo: ${podDir}." "error" 0
+            return 1
+        fi
+    fi
+
+    local url=
+    url="$(cd "${podDir}" && git config --get remote.origin.url)"
+    # Check so any provided git url matches
+    if [ -n "${gitUrl}" ]; then
+        if [ "${url}" != "${gitUrl}" ]; then
+            PRINT "Git url provided does not match existing remote.origin.url: \"${url}\"." "error" 0
+            return 1
+        fi
+    fi
+
     local podSpec="$(FILE_REALPATH "${PODPATH}/${pod}/pod.yaml")"
     if [ ! -f "${podSpec}" ]; then
         PRINT "pod.yaml does not exist as: ${podSpec}" "error" 0
-        return 1
-    fi
-
-    local configCommit=
-    if ! configCommit="$(_UTIL_GET_TAG_DIR "${PODPATH}/${pod}")"; then
-        PRINT "Cannot attach pod when pod is not a git repo." "error" 0
         return 1
     fi
 
@@ -1715,35 +1899,45 @@ _PRJ_ATTACH_POD()
     local variablesToSubst="$(TEXT_EXTRACT_VARIABLES "${text}")"
     local varname=
     for varname in ${variablesToSubst}; do
+        # This variable can be referenced in the pod.yaml, but it is automatically
+        # provided by the pod compiler.
+        if [ "${varname}" = "podVersion" ]; then
+            continue
+        fi
         if STRING_IS_ALL "${varname}" "A-Z0-9_"; then
             # ALL CAPS global variables
             # Don't show {HOST,CLUSTER}PORTAUTOxyz variable names
             if [ "${varname#HOSTPORTAUTO}" = "${varname}" ] && [ "${varname#CLUSTERPORTAUTO}" = "${varname}" ]; then
-                PRINT "Variable ${varname} is defined in pod.yaml, you might want to defined it in the cluster-vars.env file" "info" 0
+                PRINT "Variable ${varname} is defined in pod.yaml, you might want to define it in the cluster-vars.env file" "info" 0
             fi
         else
             # Prefixed variable names.
-            PRINT "Variable ${pod}_${varname} is defined in pod.yaml, you might want to defined it in the cluster-vars.env file" "info" 0
+            PRINT "Variable ${pod}_${varname} is defined in pod.yaml, you might want to define it in the cluster-vars.env file" "info" 0
         fi
     done
-
-    local podConfigDir="$(FILE_REALPATH "${PODPATH}/${pod}/config")"
 
     if ! mkdir -p "${CLUSTERPATH}/${host}/pods/${pod}"; then
         PRINT "Could not create directory." "error" 0
         return 1
     fi
 
+    # Remember the git url of the repo, if any.
+    if [ -n "${url}" ]; then
+        printf "%s\\n" "${url}" >"${CLUSTERPATH}/${host}/pods/${pod}/git.url"
+    fi
+
+    # This creates the log.txt file in the attachment dir.
     _PRJ_LOG_P "${host}" "${pod}" "ATTACHED"
 
     PRINT "Pod is now attached" "ok" 0
 
     # Check if this was the first pod on the hosts, if so suggest to also add any pod configs into the cluster.
+    local podConfigDir="$(FILE_REALPATH "${PODPATH}/${pod}/config")"
     local hosts=
     hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
     if [ "${hosts}" = "${host}" ]; then
         if [ ! -d "${CLUSTERPATH}/_config/${pod}" ] && [ -d "${podConfigDir}" ]; then
-            PRINT "This was the first attachement of this pod to this cluster, importing template configs from pod into cluster project" "info" 0
+            PRINT "This was the first attachment of this pod to this cluster, importing template configs from pod into cluster project" "info" 0
             _PRJ_CLUSTER_IMPORT_POD_CFG "${pod}"
         fi
     fi
@@ -2055,9 +2249,13 @@ _PRJ_HOST_INIT()
 
     local configJsonContent=""
     if [ -f "${CLUSTERPATH}/${host}/registry-config.json" ]; then
+        PRINT "Uploading ${CLUSTERPATH}/${host}/registry-config.json to \$HOME/.docker/config.json" "info" 0
         configJsonContent="$(cat "${CLUSTERPATH}/${host}/registry-config.json")"
     elif [ -f "${CLUSTERPATH}/registry-config.json" ]; then
+        PRINT "Uploading ${CLUSTERPATH}/registry-config.json to \$HOME/.docker/config.json" "info" 0
         configJsonContent="$(cat "${CLUSTERPATH}/registry-config.json")"
+    else
+        PRINT "No registry-config.json found in host dir or cluster dir" "info" 0
     fi
 
     local status=
@@ -2132,54 +2330,9 @@ _PRJ_HOST_CREATE()
         return 1
     fi
 
-    STRING_SUBST "expose" ',' ' ' 1
-    STRING_SUBST "internal" ',' ' ' 1
-
-    local port=
-    for port in ${expose}; do
-        case "${port}" in
-            (*[!0-9]*)
-                PRINT "Invalid port provided: ${port}" "error" 0
-                return 1
-                ;;
-            *)
-                ;;
-        esac
-    done
-
-    STRING_TRIM "jumphost"
-
-    if [ -z "${jumphost}" ] && ! STRING_ITEM_INDEXOF "${expose}" "22"; then
-        PRINT "Port 22 not set to be exposed on this host which does not use a JUMPHOST, meaning it will not be accessible at all. Automatically adding port 22 to the exposed ports list." "warning" 0
-        expose="${expose}${expose:+ }22"
-    fi
-
-    if [ -n "${userKey}" ] || [ -n "${user}" ]; then
-        if [ -z "${user}" ]; then
-            PRINT "If providing a user key you must also provide the user name" "error" 0
-            return 1
-        fi
-        if [ -n "${userKey}" ] && [ ! -f "${userKey}" ]; then
-            PRINT "User key does not exist, remember to place it there" "warning" 0
-        fi
-    fi
-
-    if [ -n "${superUserKey}" ] || [ -n "${superUser}" ]; then
-        if [ -z "${superUserKey}" ]; then
-            superUserKey="id_rsa_super"
-        fi
-        if [ -z "${superUser}" ]; then
-            PRINT "If providing a superUser key you must also provide the superUser name" "error" 0
-            return 1
-        fi
-        if [ ! -f "${superUserKey}" ]; then
-            PRINT "Superuser key does not exist, remember to place it there" "warning" 0
-        fi
-    fi
-
     # Split address into IP and port
     if [ -z "${hostAddress}" ]; then
-        PRINT "Host address must be provided. Set to 'local' for simulated host working directly on local disk" "error" 0
+        PRINT "Host address must be provided (-a switch). Set to '-a local' for a simulated host working directly on local disk" "error" 0
         return 1
     fi
 
@@ -2194,6 +2347,50 @@ _PRJ_HOST_CREATE()
         if [ -n "${superUser}" ]; then
             PRINT "Superuser cannot be provided for a 'local' host" "error" 0
             return 1
+        fi
+    fi
+
+    STRING_SUBST "expose" ',' ' ' 1
+    STRING_SUBST "internal" ',' ' ' 1
+    STRING_TRIM "jumphost"
+
+    local exposePort=
+    for exposePort in ${expose}; do
+        case "${exposePort}" in
+            (*[!0-9]*)
+                PRINT "Invalid port provided: ${exposePort}" "error" 0
+                return 1
+                ;;
+            *)
+                ;;
+        esac
+    done
+
+    if [ "${hostAddress}" != "local" ] && [ -z "${jumphost}" ] && ! STRING_ITEM_INDEXOF "${expose}" "${port}"; then
+        PRINT "SSH port ${port} not set to be exposed on this host which does not use a JUMPHOST, meaning it will not be accessible at all. Automatically adding port ${port} to the exposed ports list." "warning" 0
+        expose="${expose}${expose:+ }${port}"
+    fi
+
+    if [ -n "${userKey}" ] || [ -n "${user}" ]; then
+        if [ -z "${user}" ]; then
+            PRINT "If providing a user key you must also provide the user name" "error" 0
+            return 1
+        fi
+        if [ -n "${userKey}" ] && [ ! -f "${userKey}" ]; then
+            PRINT "User key ${userKey} does not exist." "warning" 0
+        fi
+    fi
+
+    if [ -n "${superUserKey}" ] || [ -n "${superUser}" ]; then
+        if [ -z "${superUserKey}" ]; then
+            superUserKey="id_rsa_super"
+        fi
+        if [ -z "${superUser}" ]; then
+            PRINT "If providing a superUser key you must also provide the superUser name" "error" 0
+            return 1
+        fi
+        if [ ! -f "${superUserKey}" ]; then
+            PRINT "Superuser key ${superUserKey} does not exist." "warning" 0
         fi
     fi
 
@@ -2287,6 +2484,10 @@ _PRJ_CLUSTER_CREATE()
     fi
 
     local CLUSTERPATH="${basePath}/${clusterName}"
+
+    # Add random suffix, to avoid possible name clashes when reusing same cluster names.
+    local randomToken="$(awk 'BEGIN{min=1;max=65535;srand(); print int(min+rand()*(max-min+1))}')"
+    clusterName="${clusterName}-${randomToken}"
 
     if [ -e "${CLUSTERPATH}" ]; then
         PRINT "Cluster directory already exists" "error" 0

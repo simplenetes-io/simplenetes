@@ -161,13 +161,15 @@ LIST_HOSTS()
 
 ATTACH_POD()
 {
-    SPACE_SIGNATURE="podTuple"
+    SPACE_SIGNATURE="podTuple [gitUrl]"
     SPACE_DEP="_PRJ_ATTACH_POD"
 
     local podTuple="${1}"
     shift
 
-    _PRJ_ATTACH_POD "${podTuple}"
+    local gitUrl="${1:-}"
+
+    _PRJ_ATTACH_POD "${podTuple}" "${gitUrl}"
 }
 
 DETACH_POD()
@@ -373,6 +375,14 @@ GET_POD_STATUS()
     _PRJ_GET_POD_STATUS "$@"
 }
 
+GET_POD_INFO()
+{
+    SPACE_SIGNATURE="podTriple"
+    SPACE_DEP="_PRJ_GET_POD_INFO"
+
+    _PRJ_GET_POD_INFO "$@"
+}
+
 RELEASE()
 {
     SPACE_DEP="_RELEASE"
@@ -452,6 +462,8 @@ USAGE()
 
     create-cluster name
         Creates a cluster project with the given name in the current directory.
+        A random integer is prefixed to the name to give the cluster its ID.
+        This ID is stored in the file cluster-id.txt.
 
     sync [-f] [-q]
         Sync the cluster project in the current directory with the Cluster.
@@ -466,13 +478,18 @@ USAGE()
         Import config templates from pod repo into the cluster project.
 
     create-host host -a address [-j jumpHost -e expose -d hostHome -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]
-        Create a host in the cluster repo by the name 'host'.
-        -a host IP:PORT (required).
+        Create a host directory in the cluster representing the host.
+        Note that the physical VM should already have been created before you run this command.
+
+        -a host IP[:PORT] (required)
+            IP address of an existing host to provision as a Simplenetes cluster host.
+            If PORT is provided that is the SSH port of the host. Default is 22.
             If host is set to 'local' then that dictates this host is not SSH enabled but targets local disk instead,
             which is only useful for when working with a local dev-cluster.
 
         -j jumphost (optional)
-            an optional host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
+            The name of an already existing host to do SSH jumps via, often used for worker machines which are not exposed directly to the public internet.
+            It is allowed to jump multiple times, that is using a jumphost which in its turn is also using a jumphost.
 
         -e expose (optional)
             Comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
@@ -490,7 +507,10 @@ USAGE()
             If user is set and already exists on the host then also the keyfile needs to be set.
 
         -s superusername (optional)
-            If set then this is an already existing superuser on the host. Some ISPs provide a superuser instead of root access when creating a VM.
+            If there is already an existing superuser on the host it must be set here.
+            Some ISPs provide a superuser instead of root access when creating a VM.
+            If setting superuser then also set the superuser keyfile with -S.
+            When superuser is set when creating the host then create-superuser does not need to be run.
 
         -S superuserkeyfile (optional)
             If superuser is set then also the keyfile can be set. If not set it defaults to 'id_rsa_super', which must be placed in the host directory.
@@ -510,21 +530,29 @@ USAGE()
 
     create-superuser host [-k rootkeyfile]
         Login as root on the host and create the super user.
-        rootkeyfile is optional, of not set then password is required to login as root.
+        rootkeyfile is optional, if not set then password is required to login as root.
+        If the superuser was already set in create-host then this command will not run.
+        Run this once after create-host.
 
     disable-root host
         Use the super user account to disable the root login on a host.
+        Run this once after create-superuser.
 
     setup-host host
         Setup the host using the superuser.
         Creates the regular user, installs podman, configures firewalld, installs the daemon, etc.
+        Run this command after create-host, create-superuser and disable-root.
         This command is idempotent and is safe to run multiple times.
-        If the EXPOSE or INTERNAL variables in host.env are changed then this action need to be run.
+        If the EXPOSE or INTERNAL variables in host.env are changed then this action need to be run again.
+        This command cannot be run for "local" disk based hosts.
 
-    init-host host
+    init-host host [-f]
         Initialize a host to be part of the cluster by writing the cluster-id.txt file to hosthome.
-        Also upload the registry-config.json file for the host.
+        Also upload the registry-config.json file for the host. The file is searched for in the host directory then in the cluster directory.
+
         This command is idempotent and is safe to run multiple times.
+        If the registry-config.json has beej updated then run this command again to get it uploaded to the host.
+        -f of the remote host is already inited with a cluster-id.txt that needs to match the cluster ID for the host we are uploading from. However by providing the -f switch you can force change the cluster ID of the remote host.
 
     ls-hosts [-a] [-s]
         List active and inactive hosts in this cluster project.
@@ -533,6 +561,8 @@ USAGE()
 
     ls-pods
         List all pods in the PODPATH.
+        PODPATH is by default (can be overridden) set to "./_pods" of the cluster directory. However if that directory does not exist then
+        PODPATH is set to "../pods" of the parent directory of the cluster.
 
     ls-hosts-by-pod pod
         List all hosts who have a given pod attached.
@@ -541,11 +571,18 @@ USAGE()
     ls-pods-by-host host
         List all pods attached to a specific host.
 
-    attach-pod pod@host
+    attach-pod pod@host [-l giturl]
         Attach a Pod to a host, this does not deploy anything nor release anything.
         Host must exist in the cluster project.
-        pod must exist on PODPATH.
-        If this was the first attachement any pod config templates are imported into the cluster project.
+        -l  optional git url for the pod repo.
+            If set the repo is cloned into PODPATH if not already existing.
+            If not set then pod must already exist on PODPATH.
+            If set and pod already exists then the git urls must match.
+
+        If the pod is a git repo the git url will be set in the attachment, so when compiling
+        the url is verified against the pod and if not existing the pod will be cloned.
+
+        If this was the first attachment any pod config templates are imported into the cluster project.
 
     detach-pod pod[@host]
         Remove a pod from one or all hosts.
@@ -553,7 +590,7 @@ USAGE()
     compile pod[@host] [-v]
         Compile the current pod version to all (or one) host(s) which it is already attached to.
         If host is left out then compile on all hosts which have the pod attached.
-        If -v option set then output the new pod version to stdout (porcelain switch used internally).
+        -v option set then output the new pod version to stdout (porcelain switch used internally).
         Pod configs stored in the cluster (_config/) will automatically be copied into the new release.
 
     update-config pod[:version][@host]
@@ -592,6 +629,10 @@ USAGE()
         -r option set means to only get the 'readiness' of the pod.
         -q option set means to not output but to return 1 if no pod ready. Only applicable if also -r flag used.
 
+    pod-info pod[:version][@host]
+        Get the static information of a pod.
+        If host is left out then get status of the pod for all hosts which the pod is attached to.
+
     generate-ingress [ingresspod[:version]] [-x excludeClusterPorts]
         Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
         ingressPod
@@ -629,6 +670,10 @@ USAGE()
     signal pod[:version][@host] [containers]
         Signal a pod on a specific host or on all attached hosts.
         Optionally specify which containers to signal, default is all containers in the pod.
+
+    rerun pod[:version][@host] [containers]
+        Rerun a pod or container(s) within a pod.
+        Optionally specify which containers to rerun, default is the whole pod.
 
     delete pod[:version][@host]
         Delete pod releases which are in the \"removed\" state.
@@ -711,7 +756,7 @@ _GETOPTS()
             # Non switch
             posCount="$((posCount+1))"
             if [ "${posCount}" -gt "${maxPositional}" ]; then
-                PRINT "Too many positional argumets, max ${maxPositional}" "error" 0
+                PRINT "Too many positional arguments, max ${maxPositional}" "error" 0
                 return 1
             fi
             _out_rest="${_out_rest}${_out_rest:+ }${1}"
@@ -750,7 +795,7 @@ _GETOPTS()
     done
 
     if [ "${posCount}" -lt "${minPositional}" ]; then
-        PRINT "Too few positional argumets, min ${minPositional}" "error" 0
+        PRINT "Too few positional arguments, min ${minPositional}" "error" 0
         return 1
     fi
 }
@@ -778,21 +823,17 @@ SNT_CMDLINE()
 
     if [ "${1:-}" != "create-cluster" ]; then
         # Check for cluster-id.txt, upwards and cd into that dir so that snt becomes more flexible in where users execute it from.
-        # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH=$PWD, and we allow to check upward for a cluster-id.txt
+        # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH has defaulted to $PWD, and we allow to check upward for a cluster-id.txt
         local dots="./"
         if [ ! -f "cluster-id.txt" ] && [ "${CLUSTERPATH}" = "${PWD}" ]; then
-            PRINT "CLUSTERPATH not valid, searching upwards for cluster-id.txt" "debug"
+            PRINT "CLUSTERPATH not valid, searching upwards for cluster-id.txt" "debug" 0
             while true; do
                 while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
                     dots="../${dots}"
                     if [ -f "${dots}/cluster-id.txt" ]; then
                         # Found it
                         CLUSTERPATH="$(FILE_REALPATH "${dots}")"
-                        PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug"
-                        if [ ! -d "${PODPATH}" ]; then
-                            PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
-                            PRINT "Setting new PODPATH: ${PODPATH}" "debug"
-                        fi
+                        PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug" 0
                         break 2
                     fi
                 done
@@ -800,6 +841,10 @@ SNT_CMDLINE()
                 return 1
             done
         fi
+    fi
+    if [ ! -d "${PODPATH}" ]; then
+        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
+        PRINT "Setting new PODPATH: ${PODPATH}" "debug" 0
     fi
 
     local status=
@@ -813,8 +858,8 @@ SNT_CMDLINE()
 _SNT_CMDLINE()
 {
     SPACE_SIGNATURE="[action args]"
-    SPACE_DEP="GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE DELETE_POD UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RERUN_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS POD_SHELL HOST_SHELL REGISTRY_CONFIG"
-    # It is important that CLUSTERPATH is in front of PODPATH, because PODPATH references the former.
+    SPACE_DEP="GET_HOST_STATE SET_HOST_STATE GEN_INGRESS_CONFIG GET_POD_RELEASE_STATES LOGS SET_POD_RELEASE_STATE DELETE_POD UPDATE_POD_CONFIG COMPILE_POD DETACH_POD ATTACH_POD LIST_HOSTS_BY_POD LIST_PODS LIST_HOSTS HOST_SETUP HOST_CREATE_SUPERUSER HOST_DISABLE_ROOT HOST_INIT HOST_CREATE CLUSTER_IMPORT_POD_CFG CLUSTER_STATUS CLUSTER_CREATE CLUSTER_SYNC DAEMON_LOG PRINT _GETOPTS LS_POD_RELEASE_STATE SET_POD_INGRESS_STATE SIGNAL_POD RERUN_POD RELEASE LIST_PODS_BY_HOST GET_POD_STATUS GET_POD_INFO POD_SHELL HOST_SHELL REGISTRY_CONFIG"
+    # It is important that CLUSTERPATH is in front of PODPATH, because PODPATH could reference the former.
     SPACE_ENV="CLUSTERPATH PODPATH"
 
     local action="${1:-}"
@@ -934,12 +979,13 @@ _SNT_CMDLINE()
         LIST_PODS_BY_HOST "${_out_rest}"
     elif [ "${action}" = "attach-pod" ]; then
         local _out_rest=
+        local _out_l=
 
-        if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt attach-pod pod@host\\n" >&2
+        if ! _GETOPTS "" "l" 1 1 "$@"; then
+            printf "Usage: snt attach-pod pod@host [-l giturl]\\n" >&2
             return 1
         fi
-        ATTACH_POD "${_out_rest}"
+        ATTACH_POD "${_out_rest}" "${_out_l}"
     elif [ "${action}" = "detach-pod" ]; then
         local _out_rest=
 
@@ -953,7 +999,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "v" "" 1 1 "$@"; then
-            printf "Usage: snt compile pod[@host]\\n" >&2
+            printf "Usage: snt compile pod[@host] [-v]\\n" >&2
             return 1
         fi
         COMPILE_POD "${_out_rest}" "${_out_v}"
@@ -1005,13 +1051,22 @@ _SNT_CMDLINE()
         fi
         set -- ${_out_rest}
         LS_POD_RELEASE_STATE "${_out_s}" "${_out_q}" "$@"
+    elif [ "${action}" = "pod-info" ]; then
+        local _out_rest=
+
+        if ! _GETOPTS "" "" 1 1 "$@"; then
+            printf "Usage: snt pod-info pod[:version][@host]\\n" >&2
+            return 1
+        fi
+        set -- ${_out_rest}
+        GET_POD_INFO "$@"
     elif [ "${action}" = "pod-status" ]; then
         local _out_rest=
         local _out_q="false"
         local _out_r="false"
 
         if ! _GETOPTS "q r" "" 1 1 "$@"; then
-            printf "Usage: snt get-pod-status pod[:version][@host] [-q] [-r]\\n" >&2
+            printf "Usage: snt pod-status pod[:version][@host] [-q] [-r]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}

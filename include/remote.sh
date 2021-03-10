@@ -7,7 +7,7 @@ _REMOTE_EXEC()
 {
     SPACE_SIGNATURE="host action [args]"
     # This env variable can be baked in at compile time if we want this module to be standalone
-    SPACE_ENV="CLUSTERPATH REMOTE_PACK_RELEASEDATA=$ REMOTE_SET_COMMITCHAIN=$ REMOTE_ACQUIRE_LOCK=$ REMOTE_RELEASE_LOCK=$ REMOTE_GET_HOSTMETADATA=$ REMOTE_UPLOAD_ARCHIVE=$ REMOTE_UNPACK_ARCHIVE=$ REMOTE_INIT_HOST=$ REMOTE_HOST_SETUP=$ REMOTE_LOGS=$ REMOTE_DAEMON_LOG=$ REMOTE_CREATE_SUPERUSER=$ REMOTE_DISABLE_ROOT=$ REMOTE_SIGNAL=$ REMOTE_ACTION=$ REMOTE_POD_STATUS=$ REMOTE_POD_SHELL=$ REMOTE_HOST_SHELL=$"
+    SPACE_ENV="CLUSTERPATH REMOTE_PACK_RELEASEDATA=$ REMOTE_SET_COMMITCHAIN=$ REMOTE_ACQUIRE_LOCK=$ REMOTE_RELEASE_LOCK=$ REMOTE_GET_HOSTMETADATA=$ REMOTE_UPLOAD_ARCHIVE=$ REMOTE_UNPACK_ARCHIVE=$ REMOTE_INIT_HOST=$ REMOTE_HOST_SETUP=$ REMOTE_LOGS=$ REMOTE_DAEMON_LOG=$ REMOTE_CREATE_SUPERUSER=$ REMOTE_DISABLE_ROOT=$ REMOTE_SIGNAL=$ REMOTE_ACTION=$ REMOTE_POD_STATUS=$ REMOTE_POD_INFO=$ REMOTE_POD_SHELL=$ REMOTE_HOST_SHELL=$"
     SPACE_DEP="SSH PRINT STRING_TRIM"
 
     local host="${1}"
@@ -101,6 +101,11 @@ _REMOTE_EXEC()
         "logs")
             if [ -n "${REMOTE_LOGS}" ]; then
                 RUN="${REMOTE_LOGS}"
+            fi
+            ;;
+        "pod_info")
+            if [ -n "${REMOTE_POD_INFO}" ]; then
+                RUN="${REMOTE_POD_INFO}"
             fi
             ;;
         "pod_status")
@@ -356,6 +361,34 @@ _REMOTE_POD_SHELL()
     else
         ${podFile} "shell" "${container}"
     fi
+}
+
+_REMOTE_POD_INFO()
+{
+    # Arguments are actually not optional, but we do this so the exporting goes smoothly.
+    SPACE_SIGNATURE="[hosthome pod podVersion]"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
+
+    local HOSTHOME="${1}"
+    shift
+    if [ "$(STRING_SUBSTR "${HOSTHOME}" 0 1)" != '/' ]; then
+        HOSTHOME="$(FILE_REALPATH "${HOSTHOME}" "${HOME}")"
+    fi
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local podFile="${HOSTHOME}/pods/${pod}/release/${podVersion}/pod"
+
+    if [ ! -f "${podFile}" ]; then
+        PRINT "Missing pod: ${pod}:${podVersion}" "error" 0
+        return 10
+    fi
+
+    ${podFile} info
 }
 
 _REMOTE_POD_STATUS()
