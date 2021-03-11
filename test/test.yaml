@@ -4,6 +4,6 @@ _tests:
     -
         -
             _info:
-                title: Run a full test of snt
+                title: Run a full test of sns
             _env:
                 - RUN: TEST_FULL -- "@{DIR}"

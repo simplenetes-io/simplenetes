@@ -330,7 +330,7 @@ _PRJ_GEN_INGRESS_CONFIG()
         # Different
         PRINT "Updating haproxy.cfg in ${ingressConfDir}" "info" 0
         printf "%s\\n" "${haproxyConf}" >"${haproxyConfPath}"
-        PRINT "Now you need to run 'snt update-config ${ingressPod}:${podVersion}' and then 'snt sync' to put the updated ingress configuration live" "debug" 0
+        PRINT "Now you need to run 'sns update-config ${ingressPod}:${podVersion}' and then 'sns sync' to put the updated ingress configuration live" "debug" 0
     else
         PRINT "No changes in ingress to be made." "info" 0
     fi
@@ -1668,7 +1668,7 @@ _PRJ_COMPILE_POD()
 
         # Copy configs into release
         if [ -d "${CLUSTERPATH}/_config/${pod}" ]; then
-            PRINT "Copying pod configs from cluster repo into new pod release when compiling. Note that new/changed configs from the pod repo are not automatically updated into the cluster repo. Run \"snt import-config\" to import from pod repo to cluster repo, then \"snt update-config\" to copy those into an existing pod release." "info" 0
+            PRINT "Copying pod configs from cluster repo into new pod release when compiling. Note that new/changed configs from the pod repo are not automatically updated into the cluster repo. Run \"sns import-config\" to import from pod repo to cluster repo, then \"sns update-config\" to copy those into an existing pod release." "info" 0
             if ! _PRJ_COPY_POD_CONFIGS "${CLUSTERPATH}" "${host}" "${pod}" "${podVersion}"; then
                 status=1
                 break
@@ -1757,7 +1757,7 @@ _PRJ_CLUSTER_IMPORT_POD_CFG()
         return 1
     fi
 
-    PRINT "Configs copied. New pod releases will get these new configs when compiled. To update configs of an existing pod release run \"snt update-config\"" "info" 0
+    PRINT "Configs copied. New pod releases will get these new configs when compiled. To update configs of an existing pod release run \"sns update-config\"" "info" 0
 
     _PRJ_LOG_C "IMPORT_POD_CFG ${pod}:${configCommit}"
 }
@@ -2094,7 +2094,7 @@ _PRJ_HOST_CREATE_SUPERUSER()
     local rootkeyfile="${1}"
     shift
 
-    local superUser="${1:-sntsuper}"
+    local superUser="${1:-snssuper}"
     shift $(($# > 0 ? 1 : 0))
 
     local superKeyFile="${1:-id_rsa_super}"
@@ -2414,7 +2414,7 @@ HOST=${hostAddress}
 PORT=${port}
 
 # The user on the Host which will be running the pods in rootless mode. This should NOT be the root user.
-USER=${user:-snt}
+USER=${user:-sns}
 
 # Default SSH connect timeout (seconds)
 FLAGS=-oConnectTimeout=30

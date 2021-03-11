@@ -433,18 +433,18 @@ QUICKSTART()
     cd ..
 
     # Create a dev cluster for local work
-    snt create-cluster dev-cluster
+    sns create-cluster dev-cluster
 
     cd dev-cluster
-    snt create-host laptop -a local -d simplenetes/host-laptop -r localhost:32767
-    snt init-host laptop
+    sns create-host laptop -a local -d simplenetes/host-laptop -r localhost:32767
+    sns init-host laptop
 
-    snt attach-pod webserver@laptop
-    snt attach-pod ingress@laptop
+    sns attach-pod webserver@laptop
+    sns attach-pod ingress@laptop
 
-    snt compile webserver
-    snt generate-ingress
-    snt compile ingress
+    sns compile webserver
+    sns generate-ingress
+    sns compile ingress
 
 " >&2
 }
@@ -458,7 +458,7 @@ USAGE()
 
     version
     -V
-        Output the version of snt
+        Output the version of Simplenetes
 
     create-cluster name
         Creates a cluster project with the given name in the current directory.
@@ -494,7 +494,7 @@ USAGE()
         -e expose (optional)
             Comma separated list of ports we want to expose to the public internet. If not provided then the host will be accessible internally only.
             The ports listed here are automatically exposed in the firewall when running setup-host.
-            The list can later be modified in the host.env file, and snt setup-host must be run again.
+            The list can later be modified in the host.env file, and sns setup-host must be run again.
 
         -d home directory (optional)
             Optionally specify the host's home dir on the server.
@@ -520,7 +520,7 @@ USAGE()
             Used for allowing hosts on the same network to connect to each other.
             The networks listed here are automatically configured in the host firewall when running setup-host.
             Default is "192.168.0.0/16,10.0.0.0/8,172.16.0.0/11"
-            The list can later be modified in the host.env file, and snt setup-host must be run again.
+            The list can later be modified in the host.env file, and sns setup-host must be run again.
 
         -r routeraddress (optional)
             The IP:PORT of the router proxy on the host.
@@ -557,7 +557,7 @@ USAGE()
     ls-hosts [-a] [-s]
         List active and inactive hosts in this cluster project.
         -a if set then also list disabled hosts.
-        -s if set then add a status column to the output.
+        -s if set then add a state column to the output.
 
     ls-pods
         List all pods in the PODPATH.
@@ -710,7 +710,7 @@ USAGE()
         Generate a registry-config.json file for a host or the cluster, so that podman can use that when pulling images from private registries.
 
         If the host argument is left out then generate a default file for the cluster, which is placed in the cluster base directory.
-        This file is uploaded to the host when performing \"snt init-host <host>\" and stored as \"\$HOME/.docker/config.json\" (the command should be run whenever the file is updated).
+        This file is uploaded to the host when performing \"sns init-host <host>\" and stored as \"\$HOME/.docker/config.json\" (the command should be run whenever the file is updated).
         If no registry-config.json exists in the host dir then use the cluster default in the cluster base dir (if any).
 
         If you already have an existing \"config.json\" you can place that in in the cluster dir or in a host dir named as registry-config.json.
@@ -823,7 +823,7 @@ SNT_CMDLINE()
     local oldCwd="${PWD}"
 
     if [ "${1:-}" != "create-cluster" ]; then
-        # Check for cluster-id.txt, upwards and cd into that dir so that snt becomes more flexible in where users execute it from.
+        # Check for cluster-id.txt, upwards and cd into that dir so that sns becomes more flexible in where users execute it from.
         # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH has defaulted to $PWD, and we allow to check upward for a cluster-id.txt
         local dots="./"
         if [ ! -f "cluster-id.txt" ] && [ "${CLUSTERPATH}" = "${PWD}" ]; then
@@ -869,7 +869,7 @@ _SNT_CMDLINE()
     if [ "${action}" = "create-cluster" ]; then
         local _out_rest=
         if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt create-cluster name\\n" >&2
+            printf "Usage: sns create-cluster name\\n" >&2
             return 1
         fi
         CLUSTER_CREATE "${_out_rest}"
@@ -878,21 +878,21 @@ _SNT_CMDLINE()
         local _out_q="false"
 
         if ! _GETOPTS "f q" "" 0 0 "$@"; then
-            printf "Usage: snt sync [-f] [-q]\\n" >&2
+            printf "Usage: sns sync [-f] [-q]\\n" >&2
             return 1
         fi
 
         CLUSTER_SYNC "${_out_f}" "${_out_q}"
     elif [ "${action}" = "status" ]; then
         if ! _GETOPTS "" "" 0 0 "$@"; then
-            printf "Usage: snt status\\n" >&2
+            printf "Usage: sns status\\n" >&2
             return 1
         fi
         CLUSTER_STATUS
     elif [ "${action}" = "import-config" ]; then
         local _out_rest=
         if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt import-config pod\\n" >&2
+            printf "Usage: sns import-config pod\\n" >&2
             return 1
         fi
         CLUSTER_IMPORT_POD_CFG "${_out_rest}"
@@ -909,7 +909,7 @@ _SNT_CMDLINE()
         local _out_r=
         local _out_rest=
         if ! _GETOPTS "" "j e r d a u k s S i r" 1 1 "$@"; then
-            printf "Usage: snt create-host host -a address [-j jumpHost -e expose -d homedir -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]\\n" >&2
+            printf "Usage: sns create-host host -a address [-j jumpHost -e expose -d homedir -u username -k userkeyfile -s superusername -S superuserkeyfile -i internal -r routeraddress]\\n" >&2
             return 1
         fi
         HOST_CREATE "${_out_rest}" "${_out_j}" "${_out_e}" "${_out_d}" "${_out_a}" "${_out_u}" "${_out_k}" "${_out_s}" "${_out_S}" "${_out_i}" "${_out_r}"
@@ -918,7 +918,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "f" "" 1 1 "$@"; then
-            printf "Usage: snt init-host host [-f]\\n" >&2
+            printf "Usage: sns init-host host [-f]\\n" >&2
             return 1
         fi
         HOST_INIT "${_out_rest}" "${_out_f}"
@@ -926,7 +926,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt setup-host host\\n" >&2
+            printf "Usage: sns setup-host host\\n" >&2
             return 1
         fi
         HOST_SETUP "${_out_rest}"
@@ -935,7 +935,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "k" 1 1 "$@"; then
-            printf "Usage: snt create-superuser host [-k rootkeyfile]\\n" >&2
+            printf "Usage: sns create-superuser host [-k rootkeyfile]\\n" >&2
             return 1
         fi
         HOST_CREATE_SUPERUSER "${_out_rest}" "${_out_k}"
@@ -943,7 +943,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt disable-root host\\n" >&2
+            printf "Usage: sns disable-root host\\n" >&2
             return 1
         fi
         HOST_DISABLE_ROOT "${_out_rest}"
@@ -952,13 +952,13 @@ _SNT_CMDLINE()
         local _out_s="false"
 
         if ! _GETOPTS "a s" "" 0 0 "$@"; then
-            printf "Usage: snt ls-hosts [-a] [-s]\\n" >&2
+            printf "Usage: sns ls-hosts [-a] [-s]\\n" >&2
             return 1
         fi
         LIST_HOSTS "${_out_a}" "${_out_s}"
     elif [ "${action}" = "ls-pods" ]; then
         if ! _GETOPTS "" "" 0 0 "$@"; then
-            printf "Usage: snt ls-pods\\n" >&2
+            printf "Usage: sns ls-pods\\n" >&2
             return 1
         fi
         LIST_PODS
@@ -966,7 +966,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt ls-hosts-by-pod pod\\n" >&2
+            printf "Usage: sns ls-hosts-by-pod pod\\n" >&2
             return 1
         fi
         LIST_HOSTS_BY_POD "${_out_rest}"
@@ -974,7 +974,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt ls-pods-by-host host\\n" >&2
+            printf "Usage: sns ls-pods-by-host host\\n" >&2
             return 1
         fi
         LIST_PODS_BY_HOST "${_out_rest}"
@@ -983,7 +983,7 @@ _SNT_CMDLINE()
         local _out_l=
 
         if ! _GETOPTS "" "l" 1 1 "$@"; then
-            printf "Usage: snt attach-pod pod@host [-l giturl]\\n" >&2
+            printf "Usage: sns attach-pod pod@host [-l giturl]\\n" >&2
             return 1
         fi
         ATTACH_POD "${_out_rest}" "${_out_l}"
@@ -991,7 +991,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt detach-pod host[@pod]\\n" >&2
+            printf "Usage: sns detach-pod host[@pod]\\n" >&2
             return 1
         fi
         DETACH_POD "${_out_rest}"
@@ -1000,7 +1000,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "v" "" 1 1 "$@"; then
-            printf "Usage: snt compile pod[@host] [-v]\\n" >&2
+            printf "Usage: sns compile pod[@host] [-v]\\n" >&2
             return 1
         fi
         COMPILE_POD "${_out_rest}" "${_out_v}"
@@ -1008,7 +1008,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt update-config pod[:version][@host]\\n" >&2
+            printf "Usage: sns update-config pod[:version][@host]\\n" >&2
             return 1
         fi
         UPDATE_POD_CONFIG "${_out_rest}"
@@ -1017,7 +1017,7 @@ _SNT_CMDLINE()
         local _out_s=""
 
         if ! _GETOPTS "" "s" 1 999 "$@"; then
-            printf "Usage: snt set-pod-ingress pod[:version][@host] -s active|inactive\\n" >&2
+            printf "Usage: sns set-pod-ingress pod[:version][@host] -s active|inactive\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1027,7 +1027,7 @@ _SNT_CMDLINE()
         local _out_s=""
 
         if ! _GETOPTS "" "s" 1 999 "$@"; then
-            printf "Usage: snt set-pod-state pod[:version][@host] -s running|stopped|removed\\n" >&2
+            printf "Usage: sns set-pod-state pod[:version][@host] -s running|stopped|removed\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1037,7 +1037,7 @@ _SNT_CMDLINE()
         local _out_q="false"
 
         if ! _GETOPTS "q" "" 1 1 "$@"; then
-            printf "Usage: snt get-pod-state pod[:version][@host] [-q]\\n" >&2
+            printf "Usage: sns get-pod-state pod[:version][@host] [-q]\\n" >&2
             return 1
         fi
         GET_POD_RELEASE_STATES "${_out_rest}" "${_out_q}"
@@ -1047,7 +1047,7 @@ _SNT_CMDLINE()
         local _out_s=""
 
         if ! _GETOPTS "q" "s" 1 1 "$@"; then
-            printf "Usage: snt ls-pod-state pod[@host] [-q] [-s running|stopped|removed]\\n" >&2
+            printf "Usage: sns ls-pod-state pod[@host] [-q] [-s running|stopped|removed]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1056,7 +1056,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt pod-info pod[:version][@host]\\n" >&2
+            printf "Usage: sns pod-info pod[:version][@host]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1067,7 +1067,7 @@ _SNT_CMDLINE()
         local _out_r="false"
 
         if ! _GETOPTS "q r" "" 1 1 "$@"; then
-            printf "Usage: snt pod-status pod[:version][@host] [-q] [-r]\\n" >&2
+            printf "Usage: sns pod-status pod[:version][@host] [-q] [-r]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1076,7 +1076,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 999 "$@"; then
-            printf "Usage: snt signal pod[:version][@host] [containers]\\n" >&2
+            printf "Usage: sns signal pod[:version][@host] [containers]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1085,7 +1085,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 999 "$@"; then
-            printf "Usage: snt rerun pod[:version][@host] [containers]\\n" >&2
+            printf "Usage: sns rerun pod[:version][@host] [containers]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1094,7 +1094,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if ! _GETOPTS "" "" 1 999 "$@"; then
-            printf "Usage: snt delete pod[:version][@host]\\n" >&2
+            printf "Usage: sns delete pod[:version][@host]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1108,7 +1108,7 @@ _SNT_CMDLINE()
         local _out_d=
 
         if ! _GETOPTS "p" "t l s d" 1 999 "$@"; then
-            printf "Usage: snt logs pod[:version][@host] [containers] [-p] [-t timestamp] [-l limit] [-s streams] [-d details]\\n" >&2
+            printf "Usage: sns logs pod[:version][@host] [containers] [-p] [-t timestamp] [-l limit] [-s streams] [-d details]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1116,7 +1116,7 @@ _SNT_CMDLINE()
     elif [ "${action}" = "daemon-log" ]; then
         local _out_rest=
         if ! _GETOPTS "" "" 0 1 "$@"; then
-            printf "Usage: snt daemon-log [host]\\n" >&2
+            printf "Usage: sns daemon-log [host]\\n" >&2
             return 1
         fi
         DAEMON_LOG "${_out_rest}"
@@ -1124,7 +1124,7 @@ _SNT_CMDLINE()
         local _out_rest=
         local _out_x=
         if ! _GETOPTS "" "x" 0 1 "$@"; then
-            printf "Usage: snt generate-ingress [ingressPod[:version]] [-x excludeClusterPorts]\\n" >&2
+            printf "Usage: sns generate-ingress [ingressPod[:version]] [-x excludeClusterPorts]\\n" >&2
             return 1
         fi
         GEN_INGRESS_CONFIG "${_out_rest}" "${_out_x}"
@@ -1132,7 +1132,7 @@ _SNT_CMDLINE()
         local _out_rest=
         local _out_s=""
         if ! _GETOPTS "" "s" 1 1 "$@"; then
-            printf "Usage: snt set-host-state host -s active|inactive|disabled\\n" >&2
+            printf "Usage: sns set-host-state host -s active|inactive|disabled\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1140,7 +1140,7 @@ _SNT_CMDLINE()
     elif [ "${action}" = "get-host-state" ]; then
         local _out_rest=
         if ! _GETOPTS "" "" 1 1 "$@"; then
-            printf "Usage: snt get-host-state host\\n" >&2
+            printf "Usage: sns get-host-state host\\n" >&2
             return 1
         fi
         GET_HOST_STATE "${_out_rest}"
@@ -1151,7 +1151,7 @@ _SNT_CMDLINE()
         local _out_f="false"
 
         if ! _GETOPTS "p f" "m" 1 1 "$@"; then
-            printf "Usage: snt release pod[:version] [-p] [-m soft|hard] [-f]\\n" >&2
+            printf "Usage: sns release pod[:version] [-p] [-m soft|hard] [-f]\\n" >&2
             return 1
         fi
         RELEASE "${_out_rest}" "${_out_m}" "${_out_p}" "${_out_f}"
@@ -1160,7 +1160,7 @@ _SNT_CMDLINE()
         local _out_B="false"
 
         if ! _GETOPTS "B" "" 1 2 "$@"; then
-            printf "Usage: snt pod-shell pod[:version][@host] [container] [-B]\\n" >&2
+            printf "Usage: sns pod-shell pod[:version][@host] [container] [-B]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1171,7 +1171,7 @@ _SNT_CMDLINE()
         local _out_B="false"
 
         if ! _GETOPTS "s B" "" 1 1 "$@"; then
-            printf "Usage: snt host-shell host [-s] [-B]\\n" >&2
+            printf "Usage: sns host-shell host [-s] [-B]\\n" >&2
             return 1
         fi
         set -- ${_out_rest}
@@ -1181,7 +1181,7 @@ _SNT_CMDLINE()
         local _out_rest=
 
         if [ "$#" -gt 1 ]; then
-            printf "Usage: snt registry-config [host]\\n
+            printf "Usage: sns registry-config [host]\\n
 registry-url:username:password
 etc
 <ctrl-d>

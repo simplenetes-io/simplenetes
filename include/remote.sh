@@ -162,7 +162,7 @@ _REMOTE_EXEC()
             SSH "" "" "" "" "" "${hostEnv}" "" "${RUN}" "${HOSTHOME}" "$@"
         fi
     else
-        # Run the space target to do this. This is usually only done in dev mode when we are working with the snt source.
+        # Run the space target to do this. This is usually only done in dev mode when we are working with the sns source.
         if [ "${HOST}" = "local" ]; then
             space -L "${SPACE_LOG_LEVEL}" -f "${0}" /_remote_plumbing/${action}/ -- "${HOSTHOME}" "$@"
         else
@@ -241,7 +241,7 @@ _REMOTE_DAEMON_LOG()
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
     SPACE_SIGNATURE="[hosthome]"
 
-    journalctl -u sntd
+    journalctl -u simplenetesd
 }
 
 _REMOTE_SIGNAL()
@@ -595,14 +595,14 @@ _REMOTE_HOST_SETUP()
 
     # Download the simplenetes daemon.
     binaryUpdated="false"
-    local daemonFile="/bin/sntd"
+    local daemonFile="/bin/simplenetesd"
     if [ ! -f "${daemonFile}" ]; then
         # TODO
         PRINT "Downloading daemon binary" "info" 0
         # TODO
-        wget https://github.com/simpletenes/sntd/releases/tag/1.0.0
-        chmod +x sntd
-        sudo mv sntd "${daemonFile}"
+        wget https://github.com/simpletenes/simplenetesd/releases/tag/1.0.0
+        chmod +x simplenetesd
+        sudo mv simplenetesd "${daemonFile}"
         binaryUpdated="true"
         return 0
     else
@@ -610,7 +610,7 @@ _REMOTE_HOST_SETUP()
     fi
 
     # Make sure the bin is managed by systemd.
-    local file="/etc/systemd/system/sntd.service"
+    local file="/etc/systemd/system/simplenetesd.service"
         local unit="[Unit]
 Description=Simplenetes Daemon managing pods and ramdisks
 After=network-online.target
@@ -619,7 +619,7 @@ After=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root
-ExecStart=/bin/sntd -o /root/sntd.log
+ExecStart=/bin/simplenetesd -o /root/simplenetesd.log
 Restart=always
 KillMode=process
 
@@ -640,12 +640,12 @@ WantedBy=multi-user.target"
         fi
 
         PRINT "Starting and enabling daemon service" "info" 0
-        systemctl enable sntd
-        systemctl restart sntd
+        systemctl enable simplenetesd
+        systemctl restart simplenetesd
     else
         PRINT "No change in systemd service" "info" 0
         if [ "${binaryUpdated}" = "true" ]; then
-            systemctl restart sntd
+            systemctl restart simplenetesd
         fi
     fi
 }

@@ -154,7 +154,7 @@ provision_host:
 
     3_setup:
         _info:
-            title: Using the superuser, create the regular user account, install podman, sntd and configure
+            title: Using the superuser, create the regular user account, install podman, simplenetesd and configure
             desc: |
                 Create the regular user, add the user pub key.
                 Install podman, make sure it is configured.
@@ -533,7 +533,7 @@ ls_pods:
 
 cmdline:
     _info:
-        title: Use snt as a standalone cmd line tool
+        title: Use sns as a standalone cmd line tool
     _env:
         # Set these variable so they are assigned at runtime
         - CLUSTERPATH: \${CLUSTERPATH:-\$PWD}
