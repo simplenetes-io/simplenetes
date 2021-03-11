@@ -3068,7 +3068,7 @@ _PRJ_GEN_INGRESS_CONFIG2()
         PRINT "No ingress has been generated." "warning" 0
     fi
 
-    if ! cat "${ingressTplDir}/main.tpl"; then
+    if ! cat "${ingressTplDir}/main.conf.fragment"; then
         return 1
     fi
 
@@ -3090,7 +3090,7 @@ _PRJ_GEN_INGRESS_CONFIG2()
         fi
         printf "\\nfrontend %s-%s\\n" "${bind}" "${protocol}"
         printf "    bind :%s%s\\n" "${bind}" "${frontendextra}"
-        if ! awk '{$0="    "$0; print}' "${ingressTplDir}/frontend-${protocol}.tpl"; then
+        if ! awk '{$0="    "$0; print}' "${ingressTplDir}/frontend-${protocol}.conf.fragment"; then
             return 1
         fi
         local sortedfile="${tmpDir}/${frontend}.sorted"
@@ -3117,7 +3117,7 @@ _PRJ_GEN_INGRESS_CONFIG2()
         mode="${backend%.backend}"
         mode="${mode#*-}"
         printf "\\nbackend %s\\n" "${name}"
-        if ! awk '{$0="    "$0; print}' "${ingressTplDir}/backend-${mode}.tpl"; then
+        if ! awk '{$0="    "$0; print}' "${ingressTplDir}/backend-${mode}.conf.fragment"; then
             return 1
         fi
         while IFS='' read -r line; do
