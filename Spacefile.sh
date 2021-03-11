@@ -632,6 +632,7 @@ USAGE()
     pod-info pod[:version][@host]
         Get the static information of a pod.
         If host is left out then get status of the pod for all hosts which the pod is attached to.
+        If version is left out the 'latest' version is searched for.
 
     generate-ingress [ingresspod[:version]] [-x excludeClusterPorts]
         Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.

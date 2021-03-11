@@ -6636,6 +6636,7 @@ USAGE()
         Run this command after create-host, create-superuser and disable-root.
         This command is idempotent and is safe to run multiple times.
         If the EXPOSE or INTERNAL variables in host.env are changed then this action need to be run again.
+        This command cannot be run for "local" disk based hosts.
 
     init-host host [-f]
         Initialize a host to be part of the cluster by writing the cluster-id.txt file to hosthome.
@@ -6652,8 +6653,8 @@ USAGE()
 
     ls-pods
         List all pods in the PODPATH.
-        If PODPATH is not set then default PODPATH is "./_pods" inside the cluster directory,
-        if that is not a directory then snt sets the PODPATH to "../pods" instead.
+        PODPATH is by default (can be overridden) set to "./_pods" of the cluster directory. However if that directory does not exist then
+        PODPATH is set to "../pods" of the parent directory of the cluster.
 
     ls-hosts-by-pod pod
         List all hosts who have a given pod attached.
@@ -6723,6 +6724,7 @@ USAGE()
     pod-info pod[:version][@host]
         Get the static information of a pod.
         If host is left out then get status of the pod for all hosts which the pod is attached to.
+        If version is left out the 'latest' version is searched for.
 
     generate-ingress [ingresspod[:version]] [-x excludeClusterPorts]
         Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
@@ -10050,7 +10052,7 @@ _PRJ_SET_POD_INGRESS_STATE()
                 continue
             fi
 
-            local ingressConfFile="pod.ingress.conf"
+            local ingressConfFile=".pod.ingress.conf"
             local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
             local targetPodIngressConfFile="${targetPodDir}/${ingressConfFile}"
 
@@ -10414,16 +10416,17 @@ _PRJ_GET_POD_INFO()
     local host=
     for host in ${hosts}; do
         if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+            PRINT "Pod ${pod} release:${version} executable on ${host} is missing." "error" 0
             continue
         fi
 
-        # Show pod current info
-        local info=
-        if info="$(_PRJ_GET_POD_INFO2 "${host}" "${pod}" "${podVersion}")"; then
-            printf "host: %s\\n%s\\n" "${host}" "${info}"
-        else
-            printf "host: %s\\npod: %s\\ninfo: unknown\\n" "${host}" "${pod}-${podVersion}"
+        local podFile="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}/pod"
+        if [ ! -f "${podFile}" ]; then
+            PRINT "Pod ${pod} release:${podVersion} executable on ${host} is missing." "error" 0
+            continue
         fi
+
+        ${podFile} info
     done
 }
 
@@ -10593,6 +10596,8 @@ _PRJ_EXTRACT_INGRESS()
     shift
 
     local ingressConf="${podfile}.ingress.conf"
+    # Make into dotfile
+    ingressConf="${ingressConf%/*}/.${ingressConf##*/}"
 
     if [ ! -f "${ingressConf}" ]; then
         return
@@ -11571,7 +11576,7 @@ _PRJ_GET_FREE_HOSTPORT()
     local dir="${CLUSTERPATH}/${host}/pods"
 
     # Extract hostPorts and clusterPorts from the proxy config lines.
-    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
+    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=29999
     local p=
@@ -11605,7 +11610,7 @@ _PRJ_GET_FREE_CLUSTERPORT()
     local reservedPorts="${1}"
 
     # Extract clusterPorts from the proxy config lines from all pods on all hosts.
-    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
+    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=60999
     local p=
@@ -12118,9 +12123,9 @@ _PRJ_CHECK_PORT_CLASHES()
         # Get all cluster ports on host
         local dir="${CLUSTERPATH}/${host}/pods"
         # Extract clusterPorts from the proxy config lines.
-        local clusterPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
+        local clusterPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
         # Extract hostPorts from the proxy config lines.
-        local hostPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
+        local hostPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
 
         local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
 
