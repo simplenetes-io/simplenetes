@@ -3185,6 +3185,11 @@ _PRJ_EXTRACT_INGRESS()
         fi
 
         if [ -n "${clusterport}" ]; then
+            # Check if cluster port is on the RED list
+            if [ "${clusterport}" -ge 64000 ]; then
+                PRINT "Cluster ports (${clusterport}) from 64000 and above are forbidden to have public ingress! For pod ${podfile}" "error" 0
+                return 1
+            fi
             # Check if the clusterport is on the ignore list
             if STRING_ITEM_INDEXOF "${excludeClusterPorts}" "${clusterport}"; then
                 PRINT "Ignoring ingress for clusterPort ${clusterport}." "warning" 0
