@@ -31,6 +31,7 @@ _RELEASE()
     local push="${2:-false}"
     local force="${3:-false}"
 
+    # TODO: implement "safe" mode.
     if [ "${mode}" = "soft" ] || [ "${mode}" = "hard" ]; then
         # All good, fall through
         :
@@ -130,7 +131,7 @@ _RELEASE()
 #    and point the ingress to the new version, all at the same time, which will give a blip of downtime most likely.
 _RELEASE_HARD()
 {
-    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_SET_POD_INGRESS_STATE"
+    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_POD_INGRESS_STATE"
 
     local pod="${1}"
     shift
@@ -153,7 +154,7 @@ _RELEASE_HARD()
             return 1
         fi
         # Remove the other version of the pod from the ingress configuration
-        if ! _PRJ_SET_POD_INGRESS_STATE "inactive" ${otherVersions}; then
+        if ! _PRJ_POD_INGRESS_STATE "inactive" ${otherVersions}; then
             return 1
         fi
     fi
@@ -163,7 +164,7 @@ _RELEASE_HARD()
         return 1
     fi
 
-    _PRJ_SET_POD_INGRESS_STATE "active" "${pod}:${podVersion}"
+    _PRJ_POD_INGRESS_STATE "active" "${pod}:${podVersion}"
 
     PRINT "********* GENERATE INGRESS *********" "info" 0
     if ! _PRJ_GEN_INGRESS_CONFIG; then
@@ -220,7 +221,7 @@ _RELEASE_HARD()
 # # TODO: implent the above.
 _RELEASE_SOFT()
 {
-    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_SET_POD_INGRESS_STATE _PRJ_GET_POD_STATUS _PRJ_IS_CLUSTER_CLEAN"
+    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GEN_INGRESS_CONFIG _PRJ_UPDATE_POD_CONFIG _SYNC_RUN _PRJ_POD_INGRESS_STATE _PRJ_GET_POD_STATUS _PRJ_IS_CLUSTER_CLEAN"
 
     local pod="${1}"
     shift
@@ -245,7 +246,7 @@ _RELEASE_SOFT()
     fi
 
     # Make sure the pods ingress is active
-    _PRJ_SET_POD_INGRESS_STATE "active" "${pod}:${podVersion}"
+    _PRJ_POD_INGRESS_STATE "active" "${pod}:${podVersion}"
 
     # Only commit if any changes were made.
     # Don't push changes here, because we might want to rollback.
@@ -285,7 +286,7 @@ _RELEASE_SOFT()
 
     if [ -n "${otherVersions}" ]; then
         # Remove the other version of the pod from the ingress configuration
-        if ! _PRJ_SET_POD_INGRESS_STATE "inactive" ${otherVersions}; then
+        if ! _PRJ_POD_INGRESS_STATE "inactive" ${otherVersions}; then
             return 1
         fi
     fi

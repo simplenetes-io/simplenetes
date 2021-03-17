@@ -223,7 +223,7 @@ _REMOTE_INIT_HOST()
     fi
 
     mkdir -p "${HOSTHOME}/pods"
-    printf "${clusterID}" >"${file}"
+    printf "%s\\n" "${clusterID}" >"${file}"
 
     # Get the config.json on STDIN
     local content="$(cat)"
@@ -303,8 +303,8 @@ _REMOTE_ACTION()
 _REMOTE_HOST_SHELL()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
-    SPACE_SIGNATURE="[hosthome useBash]"
-    SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
+    SPACE_SIGNATURE="[hosthome useBash commands]"
+    SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT STRING_ESCAPE"
 
     local HOSTHOME="${1}"
     shift
@@ -315,20 +315,29 @@ _REMOTE_HOST_SHELL()
     local useBash="${1:-false}"
     shift
 
-    cd "${HOSTHOME}"
-
-    if [ "${useBash}" = "true" ]; then
-        bash
-    else
-        sh
+    if [ -d "${HOSTHOME}" ]; then
+        cd "${HOSTHOME}"
     fi
 
+    local sh="env sh"
+
+    if [ "${useBash}" = "true" ]; then
+        sh="env bash"
+    fi
+
+    if [ "$#" -gt 0 ]; then
+        local cmds="$*"
+        STRING_ESCAPE "cmds" '"'
+        ${sh} -c "${cmds}"
+    else
+        ${sh}
+    fi
 }
 
 _REMOTE_POD_SHELL()
 {
     # Arguments are actually not optional, but we do this so the exporting goes smoothly.
-    SPACE_SIGNATURE="[hosthome pod podVersion container useBash]"
+    SPACE_SIGNATURE="[hosthome pod podVersion container useBash commands]"
     SPACE_DEP="STRING_SUBSTR FILE_REALPATH PRINT"
 
     local HOSTHOME="${1}"
@@ -357,9 +366,9 @@ _REMOTE_POD_SHELL()
     fi
 
     if [ "${useBash}" = "true" ]; then
-        ${podFile} "shell" "${container}" -B
+        ${podFile} "shell" "${container}" -b "$@"
     else
-        ${podFile} "shell" "${container}"
+        ${podFile} "shell" "${container}" "$@"
     fi
 }
 
@@ -481,7 +490,7 @@ _REMOTE_LOGS()
 _REMOTE_HOST_SETUP()
 {
     # Actually not optional arguments
-    SPACE_SIGNATURE="[hosthome user ports internals]"
+    SPACE_SIGNATURE="[hosthome user ports internals skipFirewall skipSystemd skipPodman]"
     SPACE_DEP="PRINT OS_INSTALL_PKG _OS_CREATE_USER FILE_ROW_REMOVE FILE_ROW_PERSIST"
 
     local hosthome="${1}"
@@ -496,121 +505,153 @@ _REMOTE_HOST_SETUP()
     local internals="${1}"
     shift
 
+    local skipFirewall="${1:-false}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local skipSystemd="${1:-false}"
+    shift $(($# > 0 ? 1 : 0))
+
+    local skipPodman="${1:-false}"
+    shift $(($# > 0 ? 1 : 0))
+
     if [ $(id -u) != 0 ]; then
         PRINT "This needs to be run as root." "error" 0
         return 1
     fi
 
     # Create regular user
-    # pub key on stdin
+    # NOTE: pub key on stdin will get written to ~/.ssh/authorized_keys
     if ! _OS_CREATE_USER "${user}"; then
         PRINT "Could not create user ${user}" "error" 0
         return 1
     fi
 
-    # Install podman
-    if ! OS_INSTALL_PKG "podman"; then
-        PRINT "Could not install podman" "error" 0
+    if [ "${skipPodman}" != "true" ]; then
+        # Install podman
+        if ! OS_INSTALL_PKG "podman"; then
+            PRINT "Could not install podman" "error" 0
+        fi
+        local podmanVersion="$(podman --version)"
+        PRINT "Installed ${podmanVersion}" "info" 0
+
+        # Check /etc/subgid /etc/subuid
+        if ! grep -q "^${user}:" "/etc/subgid"; then
+            PRINT "Adding user to /etc/subgid" "info" 0
+            printf "%s:90000:9999\\n" "${user}" >>"/etc/subgid"
+            podman system migrate
+        fi
+
+        if ! grep -q "^${user}:" "/etc/subuid"; then
+            PRINT "Adding user to /etc/subuid" "info" 0
+            printf "%s:90000:9999\\n" "${user}" >>"/etc/subuid"
+            podman system migrate
+        fi
+
+        # Allow for users to bind from port 1 and updwards
+        FILE_ROW_REMOVE "net.ipv4.ip_unprivileged_port_start=.*" "/etc/sysctl.conf"
+        FILE_ROW_PERSIST "net.ipv4.ip_unprivileged_port_start=1" "/etc/sysctl.conf"
+
+        if  command -v sysctl >/dev/null 2>/dev/null; then
+            sysctl --system
+        else
+            PRINT "sysctl not present, the server might have to be restarted for /etc/sysctl.conf changes to be enabled." "warn" 0
+        fi
     fi
-    local podmanVersion="$(podman --version)"
-    PRINT "Installed ${podmanVersion}" "info" 0
 
-    # Check /etc/subgid /etc/subuid
-    if ! grep -q "^${user}:" "/etc/subgid"; then
-        PRINT "Adding user to /etc/subgid" "info" 0
-        printf "%s:90000:9999\\n" "${user}" >>"/etc/subgid"
-        podman system migrate
-    fi
 
-    if ! grep -q "^${user}:" "/etc/subuid"; then
-        PRINT "Adding user to /etc/subuid" "info" 0
-        printf "%s:90000:9999\\n" "${user}" >>"/etc/subuid"
-        podman system migrate
-    fi
-
-    # Allow for users to bind from port 1 and updwards
-    #local contents=""
-    #if [ -f "/etc/sysctl.conf" ]; then
-        #contents="$(cat /etc/systctl.conf | sed 's/net.ipv4.ip_unprivileged_port_start/d')"
-    #fi
-    #printf "%s\\n%s\\n" "${contents}" "net.ipv4.ip_unprivileged_port_start=1" >>/etc/sysctl.conf
-    FILE_ROW_REMOVE "net.ipv4.ip_unprivileged_port_start=.*" "/etc/sysctl.conf"
-    FILE_ROW_PERSIST "net.ipv4.ip_unprivileged_port_start=1" "/etc/sysctl.conf"
-    sysctl --system
-
-    # Configure firewalld
-    # TODO: this is tailored for use with how Linode does it on CentOS atm.
-    # We might want to add another "internal" zone, instead of adding the rich rule for internal networking onto the default zone.
-    if ! command -v firewall-cmd >/dev/null 2>/dev/null; then
-        PRINT "firewall-cmd not existing, cannot configure firewall to expose/hide ports. You need to make sure that worker machines are not exposed to the internet, but only to the local network and that the loadbalancers are properly exposed. This problem can go away if you choose a CentOS image." "security" 0
-        # Best way to catch users interest is to stall the terminal.
-        sleep 3
-    else
-        local port=
-        for port in $(firewall-cmd --list-ports); do
-            PRINT "Remove port ${port}" "info" 0
-            firewall-cmd --permanent --remove-port "${port}"
-        done
-        if [ -n "${ports}" ]; then
+    if [ "${skipFirewall}" != "true" ]; then
+        # Configure firewalld
+        # Note: We might want to add another "internal" zone, instead of adding the rich rule for internal networking onto the default zone.
+        if ! command -v firewall-cmd >/dev/null 2>/dev/null; then
+            PRINT "firewall-cmd not existing, cannot configure firewall to expose/hide ports. You need to make sure that worker machines are not exposed to the internet, but only to the local network and that the loadbalancers are properly exposed. This problem can go away if you choose a CentOS image." "security" 0
+            # Best way to catch users interest is to stall the terminal.
+            sleep 3
+        else
             local port=
-            for port in ${ports}; do
-                PRINT "Open port ${port}/tcp" "info" 0
-                firewall-cmd --permanent --add-port=${port}/tcp
+            for port in $(firewall-cmd --list-ports); do
+                PRINT "Remove port ${port}" "info" 0
+                firewall-cmd --permanent --remove-port "${port}"
             done
-        fi
-        # Remove any preadded ssh service, we do everything using port numbers.
-        if firewall-cmd --list-services |grep -q "\<ssh\>"; then
-            PRINT "Trim services of firewalld" "info" 0
-            firewall-cmd --permanent --remove-service ssh
-        fi
-        local rules=
-        rules="$(firewall-cmd --list-rich-rules)"
-        local _ifs="$IFS"
-        IFS="
-"
-        local rule=
-        for rule in ${rules}; do
-            PRINT "Remove current rich rule: ${rule}" "info" 0
-            firewall-cmd --permanent --remove-rich-rule "${rule}"
-        done
-        IFS="${_ifs}"
-
-        # Add a rule to allow all traffic from internal IPs
-        # Without this rule only the specific ports opened are available to the internal networking.
-        local network=
-        for network in ${internals}; do
-            PRINT "Add rich rule for: ${network}" "info" 0
-            if ! firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="'${network}'" accept'; then
-                PRINT "Could not add internal networking, adding some for rescue mode" "error" 0
-                # TODO: not sure this is the correct way of setting the internal networks
-                firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.0.0/16" accept'
-                firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/8" accept'
-                break
+            if [ -n "${ports}" ]; then
+                local port=
+                for port in ${ports}; do
+                    PRINT "Open port ${port}/tcp" "info" 0
+                    firewall-cmd --permanent --add-port=${port}/tcp
+                done
             fi
-        done
+            # Remove any preadded ssh service, we do everything using port numbers.
+            if firewall-cmd --list-services |grep -q "\<ssh\>"; then
+                PRINT "Trim services of firewalld" "info" 0
+                firewall-cmd --permanent --remove-service ssh
+            fi
+            local rules=
+            rules="$(firewall-cmd --list-rich-rules)"
+            local _ifs="$IFS"
+            IFS="
+"
+            local rule=
+            for rule in ${rules}; do
+                PRINT "Remove current rich rule: ${rule}" "info" 0
+                firewall-cmd --permanent --remove-rich-rule "${rule}"
+            done
+            IFS="${_ifs}"
 
-        PRINT "Reload firewall" "info" 0
-        firewall-cmd --reload
+            # Add a rule to allow all traffic from internal IPs
+            # Without this rule only the specific ports opened are available to the internal networking.
+            local network=
+            for network in ${internals}; do
+                PRINT "Add rich rule for: ${network}" "info" 0
+                if ! firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="'${network}'" accept'; then
+                    PRINT "Could not add internal networking, adding some for rescue mode" "error" 0
+                    # TODO: not sure this is the correct way of setting the internal networks
+                    firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.0.0/16" accept'
+                    firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/8" accept'
+                    break
+                fi
+            done
+
+            PRINT "Reload firewall" "info" 0
+            firewall-cmd --reload
+        fi
     fi
 
-    # Download the simplenetes daemon.
-    binaryUpdated="false"
-    local daemonFile="/bin/simplenetesd"
-    if [ ! -f "${daemonFile}" ]; then
-        # TODO
-        PRINT "Downloading daemon binary" "info" 0
-        # TODO
-        wget https://github.com/simpletenes/simplenetesd/releases/tag/1.0.0
-        chmod +x simplenetesd
-        sudo mv simplenetesd "${daemonFile}"
-        binaryUpdated="true"
-        return 0
-    else
-        PRINT "Daemon binary exists" "info" 0
-    fi
+    if [ "${skipSystemd}" != "true" ]; then
+        if ! command -v systemctl >/dev/null 2>/dev/null; then
+            PRINT "systemctl not present, cannot configure systemd" "error" 0
+            return 1
+        fi
 
-    # Make sure the bin is managed by systemd.
-    local file="/etc/systemd/system/simplenetesd.service"
+        # Download the simplenetes daemon.
+        # Check if the version changed, in such case overwrite it, overwrite the unit file and re-start the service.
+
+        # TODO: set the release tag and version
+        local tag="master"
+        local version="Simplenetesd 0.3"
+
+        local binaryUpdate="true"
+        local daemonFile="/usr/bin/simplenetesd"
+        if [ -f "${daemonFile}" ]; then
+            # Check version
+            local ver="$("${daemonFile}" -V)"
+            if [ "${ver}" = "${version}" ]; then
+                binaryUpdate="false"
+            fi
+        fi
+
+        if [ "${binaryUpdate}" = "true" ]; then
+            PRINT "Downloading daemon binary" "info" 0
+            if ! wget "https://raw.githubusercontent.com/simplenetes-io/simplenetesd/${tag}/release/simplenetesd"; then
+                PRINT "Could not download the simplenetesd binary" "error" 0
+                return 1
+            fi
+            chmod +x simplenetesd
+            sudo mv simplenetesd "${daemonFile}"
+        else
+            PRINT "Daemon binary exists" "info" 0
+        fi
+
+        # Make sure the bin is managed by systemd.
+        local file="/etc/systemd/system/simplenetesd.service"
         local unit="[Unit]
 Description=Simplenetes Daemon managing pods and ramdisks
 After=network-online.target
@@ -619,33 +660,36 @@ After=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root
-ExecStart=/bin/simplenetesd -o /root/simplenetesd.log
+ExecStart=${daemonFile} -o /root/simplenetesd.log
 Restart=always
 KillMode=process
 
 [Install]
 WantedBy=multi-user.target"
 
-    local exists="false"
-    if [ -f "${file}" ]; then
-        exists="true"
-    fi
-    if [ "${exists}" = "false" ] || ! (printf "%s\\n" "${unit}" |diff "${file}" "-" >/dev/null 2>&1); then
-        PRINT "Installing systemd service" "info" 0
-
-        printf "%s\\n" "${unit}" >"${file}"
-        if [ "${exists}" = "true" ]; then
-            PRINT "Daemon reload" "info" 0
-            systemctl daemon-reload
+        local exists="false"
+        if [ -f "${file}" ]; then
+            exists="true"
         fi
 
-        PRINT "Starting and enabling daemon service" "info" 0
-        systemctl enable simplenetesd
-        systemctl restart simplenetesd
-    else
-        PRINT "No change in systemd service" "info" 0
-        if [ "${binaryUpdated}" = "true" ]; then
+        if [ "${exists}" = "false" ] || ! (printf "%s\\n" "${unit}" | diff "${file}" "-" >/dev/null 2>&1); then
+            PRINT "Installing systemd service" "info" 0
+
+            printf "%s\\n" "${unit}" >"${file}"
+            if [ "${exists}" = "true" ]; then
+                PRINT "Daemon reload" "info" 0
+                systemctl daemon-reload
+            fi
+
+            PRINT "Starting and enabling daemon service" "info" 0
+            systemctl enable simplenetesd
             systemctl restart simplenetesd
+        else
+            PRINT "No change in systemd service" "info" 0
+            if [ "${binaryUpdate}" = "true" ]; then
+                PRINT "simplenetesd binary updated, restarting service" "info" 0
+                systemctl restart simplenetesd
+            fi
         fi
     fi
 }

@@ -2,7 +2,7 @@
 @source: @{DIR}/include/project.sh @{DIR}/include/sync.sh @{DIR}/include/remote.sh @{DIR}/include/release.sh @{DIR}/include/utils.sh
 
 _info:
-    title: Simplenetes version 0.1
+    title: Simplenetes 0.3
 _env:
     - CLUSTERPATH: ${CLUSTERPATH:-$PWD}
     - PODPATH: ${PODPATH:-\$CLUSTERPATH/_pods}
@@ -27,6 +27,7 @@ _env:
     - REMOTE_DISABLE_ROOT:
     - REMOTE_POD_SHELL:
     - REMOTE_HOST_SHELL:
+
 version:
     _env:
         - RUN: VERSION
@@ -34,140 +35,169 @@ help:
     _env:
         - RUN: USAGE
 
-create_cluster:
+cluster:
     _info:
-        title: Create a cluster repo
-        desc: |
-            This will create a cluster repo in the current directory.
-    _env:
-        - cluster:
-            title: Name of the cluster to create
-        - RUN: CLUSTER_CREATE -- "${cluster}"
-sync:
-    _info:
-        title: Perform a full sync with the cluster
-        desc: |
-            Sync each host in the cluster to match the cluster project.
-    _env:
-        - forceSync:
-            title: Set to "true" to force a sync if it is a rollback or a branch out of the current git commit chain.
-            value: ${forceSync:-false}
-        - quite:
-            title: Set to true to not output so much
-        - RUN: CLUSTER_SYNC -- "${forceSync}" "${quite}"
-_info:
-    title: The cluster management targets are used to sync files with hosts in the cluster.
-status:
-    _info:
-        title: Get the current status of all pods in the cluster.
-        desc: |
-            Get the current run status of all pod versions for a pod,
-            on all hosts it is connected to.
-            Also show how current state compares to desired state.
-    _env:
-        - RUN: CLUSTER_STATUS
-import_pod_config:
-    _info:
-        title: Import config templates from pod repo into the cluster project
-        desc: |
-            Copy files from the pod repos config directory into the cluster's config directory for this pod.
-            These files are most often template config files which exist in the pod repo as a guide in
-            how the pods container are configured using configs.
-            These template config files should not contain any actual config data related to runtime specifics nor
-            any secrets such as API keys.
-            Any sensitive data should be added/specified in the configs after they have been imported to the cluster
-            using this function.
-            After being imported to the cluster project from the pod and altered, then they are copied to each pod release
-            upon pod compilations, or also updated to existing pod releases in the cases it is appropiate to update configs for already running pod releases.
-    _env:
-        - pod:
-            title: Name of the pod for whom to import config templates for into the cluster.
-        - RUN: CLUSTER_IMPORT_POD_CFG -- "${pod}"
-create_host:
-    _info:
-        title: Create a host in the cluster repo
-        desc: |
-            This will create the Host directory in the cluster repo and seed the two files needed.
-            This will not provision an actual Virtual Machine, that has to be done elsewhere and the SSH
-            parameters need to be set in the host.env file.
-    _env:
-        - host:
-            title: Name of the host to create in this cluster repo.
-            desc: |
-                If set to "local" then this is not en SSH enabled virtual machine but rather a direct disk access on the laptop, which
-                is used for working with local dev-clusters.
-        - jumphost:
-            title: Set the jumphost of this host, if any.
-        - expose:
-            title: Expose ports to the public internet
-            desc: |
-                If no ports provided then the host will only be accessible on the internal network
-        - hosthome:
-            title: home dir of cluster on host.
-        - hostaddress:
-            title: IP:PORT of host IP and SSH service port. Required.
-        - user:
-            title: Username of an existing user for which to run pods as
-            desc: |
-                Only provide this is wanting to use the existing user instead of creating a new
-                one when provisioning.
-        - userkey:
-            title: Keyfile of existing user.
-        - superuser:
-            title: Username of existing superuser
-        - superuserkey:
-            title: Keyfile of superuser
-        - internal:
-            title: Internal networks to allow traffic from internally
-            desc: |
-                Default is:
-                192.168.0.0/16 10.0.0.0/8 172.16.0.0/11
-        - routeraddress:
-            title: IP:PORT of the internal proxy
-        - RUN: HOST_CREATE -- "${host}" "${jumphost}" "${expose}" "${hosthome}" "${hostaddress}" "${user}" "${userkey}" "${superuser}" "${superuserkey}" "${internal}" "${routeraddress}"
-
-
-provision_host:
-
-    1_create_superuser:
+        title: The cluster management targets are used to sync files with hosts in the cluster.
+    create:
         _info:
-            title: Using the root account, create the super user on a host
+            title: Create a cluster repo
             desc: |
-                When creatsing a new host, we need to create a super user on that host to provision it.
-                Some cloud providers do create a superuser directly, some leave it at root account with password.
-                If you already have a superuser, you should have provided the username and keyfile to the create-host command.
-                The file host-superuser.env will be created which can be used to login to the host as superuser.
+                This will create a cluster repo in the current directory.
+        _env:
+            - cluster:
+                title: Name of the cluster to create
+            - RUN: CLUSTER_CREATE -- "${cluster}"
+    ps:
+        _info:
+            title: Get the current status of the cluster.
+            desc: |
+                Get the current run status of all pod versions for a pod,
+                on all hosts it is connected to.
+                Also show how current state compares to desired state.
+        _env:
+            - RUN: CLUSTER_STATUS
+    sync:
+        _info:
+            title: Perform a full sync with the cluster
+            desc: |
+                Sync each host in the cluster to match the cluster project.
+        _env:
+            - forceSync:
+                title: Set to "true" to force a sync if it is a rollback or a branch out of the current git commit chain.
+                values:
+                    - true
+                    - false
+            - quite:
+                title: Set to true to not output so much
+                values:
+                    - true
+                    - false
+            - RUN: CLUSTER_SYNC -- "${forceSync}" "${quite}"
+    importconfig:
+        _info:
+            title: Import config templates from pod repo into the cluster project
+            desc: |
+                Copy files from the pod repos config directory into the cluster's config directory for this pod.
+                These files are most often template config files which exist in the pod repo as a guide in
+                how the pods container are configured using configs.
+                These template config files should not contain any actual config data related to runtime specifics nor
+                any secrets such as API keys.
+                Any sensitive data should be added/specified in the configs after they have been imported to the cluster
+                using this function.
+                After being imported to the cluster project from the pod and altered, then they are copied to each pod release
+                upon pod compilations, or also updated to existing pod releases in the cases it is appropiate to update configs for already running pod releases.
+        _env:
+            - pod:
+                title: Name of the pod for whom to import config templates for into the cluster.
+            - RUN: CLUSTER_IMPORT_POD_CFG -- "${pod}"
+    geningress:
+        _info:
+            title: Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
+            desc: |
+                This command will rewrite the configs for the ingress loadbalancer pods, but the configs must still be synced to the cluster.
+        _env:
+            - ingresspod:
+                title: Name of the ingress loadbalancer pod which's configs we will update default to 'ingress:latest')
+            - excludeclusterports:
+                title: Comma separated list of clusterPorts to exclude from the Ingress
+            - RUN: GEN_INGRESS_CONFIG -- "${ingresspod}" "${excludeclusterports}"
+
+host:
+    register:
+        _info:
+            title: Register a host in the cluster repo
+            desc: |
+                This will create the Host directory in the cluster repo and seed the two files needed.
+                This will not provision an actual Virtual Machine, that has to be done elsewhere and the SSH
+                parameters need to be set in the host.env file.
         _env:
             - host:
-                title: Name of the host to create the super user on
-            - rootkeyfile:
-                title: Set this if the root account has a keyfile
-            - RUN: HOST_CREATE_SUPERUSER -- "${host}" "${rootkeyfile}"
+                title: Name of the host to create in this cluster repo.
+                desc: |
+                    If set to "local" then this is not en SSH enabled virtual machine but rather a direct disk access on the laptop, which
+                    is used for working with local dev-clusters.
+            - jumphost:
+                title: Set the jumphost of this host, if any.
+            - expose:
+                title: Expose ports to the public internet
+                desc: |
+                    If no ports provided then the host will only be accessible on the internal network
+            - hosthome:
+                title: home dir of cluster on host.
+            - hostaddress:
+                title: IP:PORT of host IP and SSH service port. Required.
+            - user:
+                title: Username of an existing user for which to run pods as
+                desc: |
+                    Only provide this is wanting to use the existing user instead of creating a new
+                    one when provisioning.
+            - userkey:
+                title: Keyfile of existing user.
+            - superuser:
+                title: Username of existing superuser
+            - superuserkey:
+                title: Keyfile of superuser
+            - internal:
+                title: Internal networks to allow traffic from internally
+                desc: |
+                    Default is:
+                    192.168.0.0/16 10.0.0.0/8 172.16.0.0/11
+            - routeraddress:
+                title: IP:PORT of the internal proxy
+            - RUN: HOST_CREATE -- "${host}" "${jumphost}" "${expose}" "${hosthome}" "${hostaddress}" "${user}" "${userkey}" "${superuser}" "${superuserkey}" "${internal}" "${routeraddress}"
 
-    2_disable_root:
-        _info:
-            title: Using the super user account, disable the root account.
-        _env:
-            - host:
-                title: Name of the host to disable root access on
-            - RUN: HOST_DISABLE_ROOT -- "${host}"
+    setup:
+        superuser:
+            _info:
+                title: Using the root account, create the super user on a host
+                desc: |
+                    When registering a new host, we need to create a super user on that host to provision it.
+                    Some cloud providers do create a superuser directly, some leave it at root account with password.
+                    If you already have a superuser, you should have provided the username and keyfile to the create-host command.
+                    The file host-superuser.env will be created which can be used to login to the host as superuser.
+            _env:
+                - host:
+                    title: Name of the host to create the super user on
+                - rootkeyfile:
+                    title: Set this if the root account has a keyfile
+                - RUN: HOST_CREATE_SUPERUSER -- "${host}" "${rootkeyfile}"
 
-    3_setup:
-        _info:
-            title: Using the superuser, create the regular user account, install podman, simplenetesd and configure
-            desc: |
-                Create the regular user, add the user pub key.
-                Install podman, make sure it is configured.
-                Configure kernel so that user can bind from port 1 and upwards.
-                The daemon is installed in systemd and run as root.
-                In each $HOME directory there can be a .simplenetes-daemon file
-                which tells the daemon where to look for pods to manage for the user.
-        _env:
-            - host:
-                title: Name of the host to setup
-            - RUN: HOST_SETUP -- "${host}"
+        disableroot:
+            _info:
+                title: Using the super user account, disable the root account.
+            _env:
+                - host:
+                    title: Name of the host to disable root access on
+                - RUN: HOST_DISABLE_ROOT -- "${host}"
 
-    4_init_host:
+        install:
+            _info:
+                title: Using the superuser, create the regular user account, install podman, simplenetesd and configure
+                desc: |
+                    Create the regular user, add the user pub key.
+                    Install podman, make sure it is configured.
+                    Configure kernel so that user can bind from port 1 and upwards.
+                    The daemon is installed in systemd and run as root.
+                    In each $HOME directory there can be a .simplenetes-daemon file
+                    which tells the daemon where to look for pods to manage for the user.
+            _env:
+                - host:
+                    title: Name of the host to setup
+                - skipFirewall:
+                    values:
+                        - false
+                        - true
+                - skipSystemd:
+                    values:
+                        - false
+                        - true
+                - skipPodman:
+                    values:
+                        - false
+                        - true
+                - RUN: HOST_SETUP -- "${host}" "${skipFirewall}" "${skipSystemd}" "${skipPodman}"
+
+    init:
         _info:
             title: Using the regular user, initialize a host to be part of the cluster and upload the registry login config.json file (if any)
             desc: |
@@ -179,359 +209,351 @@ provision_host:
                 title: Name of the host to initialize onto this cluster
             - force:
                 title: Force change of clusterID if already set
-                value: ${force:-false}
+                values:
+                    - false
+                    - true
             - RUN: HOST_INIT -- "${host}" "${force}"
 
-release_pod:
-    _info:
-        title: Perform a concerted release of a new pod version
-        desc: |
-            To have a zero downtime release
+    list:
+        _info:
+            title: List active and inactive hosts in this cluster project
+        _env:
+            - all:
+                title: Set to true to list also disabled hosts
+                values:
+                    - false
+                    - true
+            - showState:
+                title: Set to true to add state column to output
+                values:
+                    - false
+                    - true
+            - pod:
+                title: Filter on hosts who have a specific pod attached.
+            - RUN: LIST_HOSTS -- "${all}" "${showState}" "${pod}"
 
+    attach:
+        _info:
+            title: Attach a Pod to a host, this does not deploy anything nor release anything
+            desc: |
+                This target creates a subdir with the pod name in the "pods" directory in the given host dir.
+                This is the only thing needed to create the attachment.
+                However the pod specs still needs to be imported and then rolled out to the host.
+                This function does not verify that the pod exists as a pod in the pods repo.
+        _env:
+            - pod:
+                title: Name of the pod and where to attach it, as: pod@host
+            - link:
+                title: Optional git url for the pod repo
+            - RUN: ATTACH_POD -- "${pod}" "${link}"
 
-list:
-    _info:
-        title: List all hosts in this cluster project
-    _env:
-        - all:
-            title: Set to true to list also disabled hosts
-        - showState:
-            title: Set to true to add state column to output
-        - RUN: LIST_HOSTS -- "${all}" "${showState}"
-attach_pod:
-    _info:
-        title: Attach a Pod to a host, this does not deploy anything nor release anything
-        desc: |
-            This target creates a subdir with the pod name in the "pods" directory in the given host dir.
-            This is the only thing needed to create the attachment.
-            However the pod specs still needs to be imported and then rolled out to the host.
-            This function does not verify that the pod exists as a pod in the pods repo.
-    _env:
-        - pod:
-            title: Name of the pod and where to attach it, as: pod@host
-        - RUN: ATTACH_POD -- "${pod}"
-detach_pod:
-    _info:
-        title: Remove a pod from a host
-        desc: |
-            This will remove the pod directory from a host.
-            This technically renames to pod directory to `.podname.unixts` so that there is a recovery option, if needed.
-            There will be no automatic sync or updating of loadbalancers.
-            When synced to the cluster, the pod will have its state set to "removed" on the host.
-    _env:
-        - pod:
-            title: Name of the pod to detach as: pod[@host]
+    detach:
+        _info:
+            title: Remove a pod from a host
             desc: |
-                if @host is omitted then pod will be removed from all attached hosts.
-        - RUN: DETACH_POD -- "${pod}"
-list_hosts_with_attached:
-    _info:
-        title: List all hosts who have a given pod attached
-    _env:
-        - pod:
-            title: Name of the pod for whom to list attached hosts
-        - RUN: LIST_HOSTS_BY_POD -- "${pod}"
-list_attached_on_host:
-    _info:
-        title: List all pods attached to a specific host
-    _env:
-        - host:
-            title: Name of the host for whom to list attached pods
-        - RUN: LIST_PODS_BY_HOST -- "${host}"
-compile_pod:
-    _info:
-        title: Compile the current pod version to all (or one) host(s) which it is already attached to.
-        desc: |
-            Compile a pod spec residing in the pods repo into all/one hosts to which it is already attached to.
-            A pod.yaml spec will be parsed and stored in the host pods/podname/version dir.
-            If the same version of the pod spec already exists on the host it will not be overwritten.
-            Even if the cluster.env file has updated to a newer version the final spec will still not be overwritten.
-            This is an idempotent command and it will not do anything if the pod version is already existing on a host.
-            This command will abort if the pod.yaml or the cluster.env files have are currenly in an edited but non committed state.
-    _env:
-        - pod:
-            title: The name of the pod to compile, as pod[@host]
-            desc: |
-                Optional name of the host to compile spec into, default is all hosts to which the pod is attached
-        - RUN: COMPILE_POD -- "${pod}"
-update_pod_config:
-    _info:
-        title: Re-copy the pod config in the cluster to a specific pod release.
-        desc: |
-            Copy the configs from the general pod config directory of this cluster into a specific pod release.
-            This is useful when you want to update an already released pods config volumes.
-            This replaces the pods current configs.
-            The pod release will need to be resynced with the cluster.
-    _env:
-        - pod:
-            title: The name (and version) of the pod to copy configs to: pod[:version][@host]
-            desc: |
-                If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
-        - RUN: UPDATE_POD_CONFIG -- "${pod}"
-set_pod_ingress:
-    _info:
-        title: Set the desired ingress state of a specific pod version on one/all attached hosts.
-    _env:
-        - state:
-            title: The desired state of the pod release's ingress
-            values:
-                - active
-                - inactive
-        - pod:
-            title: The name (and version) of the pod, as pod[:version][@host]
-            desc: |
-                If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
-        - RUN: SET_POD_INGRESS_STATE -- "${state}" "${pod}"
-release:
-    _info:
-        title: Perform a release of a new pod version
-        desc: |
-            Compile the pod and release it in a orchestrated manner.
-            A release can be "soft" or "hard".
-    _env:
-        - pod:
-            title: The name version) of the pod.
-        - mode:
-            title: Mode to use when rolling out the new version
-            values:
-                - soft
-                - hard
-        - push:
-            title: Set to true to perform 'git push' operations
-            values:
-                - false
-                - true
-        - force:
-            title: Set to true to force sync even when commit chain does not match
-            values:
-                - false
-                - true
-        - RUN: RELEASE -- "${pod}" "${mode}" "${push}" "${force}"
-signal:
-    _info:
-        title: Signal a pod's containers
-    _env:
-        - pod:
-            title: The name (and version) of the pod, as pod[:version][@host]
-            desc: |
-                If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
-        - containers:
-            title: Specific containers to signal, default is all
-        - RUN: SIGNAL_POD -- "${pod}" ${containers}
-set_pod_state:
-    _info:
-        title: Set the desired state of a specific pod version on one/all attached hosts.
-    _env:
-        - state:
-            title: The desired state of the pod release
-            values:
-                - removed
-                - stopped
-                - running
-        - pod:
-            title: The name (and version) of the pod, as pod[:version][@host]
-            desc: |
-                If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
-        - RUN: SET_POD_RELEASE_STATE -- "${state}" "${pod}"
-get_pod_state:
-    _info:
-        title: Get the desired state of a pod release version for all attached hosts or one given host
-    _env:
-        - pod:
-            title: The name (and version) of the pod, as pod[:version][@host]
-            desc: |
-                If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
-        - quite:
-            title: Set to 'true' to only print the state column
-        - RUN: GET_POD_RELEASE_STATES -- "${pod}" "${quite}"
-generate_ingress_config:
-    _info:
-        title: Update the ingress load balancers config by looking at the ingress of all active pod instances on all hosts.
-        desc: |
-            This command will rewrite the configs for the ingress loadbalancer pods, but the configs must still be synced to the cluster.
-    _env:
-        - ingresspod:
-            title: Name of the ingress loadbalancer pod which's configs we will update default to 'ingress:latest')
-        - excludeclusterports:
-            title: Comma separated list of clusterPorts to exclude from the Ingress
-        - RUN: GEN_INGRESS_CONFIG -- "${ingresspod}" "${excludeclusterports}"
-set_host_state:
-    _info:
-        title: Mark a specific host as active/inactive/disabled
-        desc: |
-            Inactive hosts are not part of sync, part of ingress generation
-            nor part of internal routing.
-            When Changing the state of a host the ingress should be regenerated.
-            also the ative host list should be updated on each active host.
-            An inactive host will get all it's pods removed upon sync.
-            An inactive host still gets pod compilations so it is
-            up to date when it is set active again.
-            A disabled host is totally ignored, will not get synced.
-    _env:
-        - host:
-            title: Name of the host for which to set the state for
-        - state:
-            title: The desired state of the host
-            values:
-                - active
-                - inactive
-                - disabled
-        - RUN: SET_HOST_STATE -- "${host}" -- "${state}"
-get_host_state:
-    _info:
-        title: Get a host's state
-    _env:
-        - host:
-            title: Name of the host for which to get the state for
-        - RUN: GET_HOST_STATE -- "${host}"
-ls_pod_state:
-    _info:
-        title: Get state for all pod version on one or all hosts
-    _env:
-        - state:
-            title: state to filter for, if any.
-            values:
-                - running
-                - stopped
-                - removed
-        - quite:
-            title: Set to true to do show state column
-        - pod:
-            title: Pod to get logs for, as: pod[@host]
-        - RUN: LS_POD_RELEASE_STATE -- "${state}" "${quite}" "${pod}"
-logs:
-    _info:
-        title: Get logs for a pod
-    _env:
-        - timestamp:
-            title: UNIX timestamp from since to get logs
-        - limit:
-            title: limit nr of lines from top or from bottom if negative
-        - streams:
-            title: Get log for STDOUT and/or STDERR
-            values:
-                - stdout
-                - stderr
-                - stdout,stderr
-        - pod:
-            title: Pod to get logs for, as: pod[:version][@host]
-        - containers:
-            title: Containers to get logs for. Leave blank for all.
-        - RUN: LOGS -- "${timestamp}" "${limit}" "${streams}" "${pod}" ${containers}
-pod_info:
-    _info:
-        title: Get static info of a pod
-    _env:
-        - pod:
-            title: Pod to get info for, as: pod[:version][@host]
-        - RUN: GET_POD_INFO -- "${pod}"
-pod_status:
-    _info:
-        title: Get ready status for the pod
-    _env:
-        - readiness:
-            title: Set to 'true' to only get the readiness status of the pod
-        - quite:
-            title: Set to 'true' to not output info but instead return 1 if not in healthy state
-            values:
-                - true
-                - false
-        - pod:
-            title: Pod to get status for, as: pod[:version][@host]
-        - RUN: GET_POD_STATUS -- "${readiness}" "${quite}" "${pod}"
-daemon_log:
-    _info:
-        title: Get all logs for the systemd Daemon
-    _env:
-        - host:
-            title: Name of the host for which to get the logs for. Default is all.
-        - RUN: DAEMON_LOG -- "${host}"
+                This will remove the pod directory from a host.
+                This technically renames to pod directory to `.podname.unixts` so that there is a recovery option, if needed.
+                There will be no automatic sync or updating of loadbalancers.
+                When synced to the cluster, the pod will have its state set to "removed" on the host.
+        _env:
+            - pod:
+                title: Name of the pod to detach as: pod[@host]
+                desc: |
+                    If @host is omitted then pod will be removed from all attached hosts.
+            - RUN: DETACH_POD -- "${pod}"
 
-pod_shell:
-    _info:
-        title: Enter into a shell in a pods container
-    _env:
-        - pod:
-            title: Pod to get status for, as: pod[:version][@host]
-        - container:
-            title: The name of the container to enter. Default is the last container in the order it was defined in the pod.yaml specification.
-        - useBash:
-            title: Set to 'true' to force bash shell
-        - RUN: POD_SHELL -- "${useBash}" "${pod}" ${container}
+    state:
+        _info:
+            title: Get or set a host's state
+        _env:
+            - host:
+                title: Name of the host for which to get or set the state for
+            - state:
+                title: Leave blank to get the state
+                values:
+                    - active
+                    - inactive
+                    - disabled
+            - RUN: HOST_STATE -- "${state}" "${host}"
 
-host_shell:
-    _info:
-        title: Enter into a shell in a host
-    _env:
-        - host:
-            title: Host name to enter
-        - superUser:
-            title: If set to 'true' then enter as the superuser
-        - useBash:
-            title: Set to 'true' to force bash shell
-        - RUN: HOST_SHELL -- "${host}" "${superUser}" "${useBash}"
+    logs:
+        _info:
+            title: Get all logs for the systemd Daemon
+        _env:
+            - host:
+                title: Name of the host for which to get the logs for. Leave blank for all.
+            - RUN: DAEMON_LOG -- "${host}"
 
-delete_pod:
-    _info:
-        title: Delete a pod release from the project
-        desc: |
-            The reason to delete an already removed pod is to free up the ports it has allocated.
-            Only pods in the "removed" state can be deleted.
-            A deleted pod release is renamed to ".releaseVersion.<unixTS>"
-    _env:
-        - pod:
-            title: The name (and version) of the pod, as pod[:version][@host]
+    shell:
+        _info:
+            title: Enter into an interactive shell in a host
+        _env:
+            - host:
+                title: Host name to enter
+            - superUser:
+                title: If set to 'true' then enter as the superuser
+                values:
+                    - false
+                    - true
+            - useBash:
+                title: Set to 'true' to force bash shell
+                values:
+                    - false
+                    - true
+            - commands:
+                title: Set to execute commands instead of entering interactive shell
+            - RUN: HOST_SHELL "${host}" "${superUser}" "${useBash}" -- ${commands}
+
+    registry:
+        _info:
+            title: Generate registry login auth config.json file
             desc: |
-                If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
-                If host is omitted then delete for all hosts it is attached to.
-        - RUN: DELETE_POD -- "${pod}"
+                When using private image registries use this to generate docker style config.json files.
+                Podman uses the file when pulling from private registries.
+                If you already have an existing config.json file you want to use, place it in the cluster base dir
+                as registry-config.json.
+                Put lines on stdin as "registry.url:username:password"
+        _env:
+            - host:
+                title: Host name to generate for, leave blank to generate default for cluster. Set to '-' to output to stdout
+                desc: |
+                    If wanting to append to an existing config, you will need to do that manually by outputting this to stdout
+                    and editing the json file by hand injecting the snippet.
+            - RUN: REGISTRY_CONFIG -- "${host}"
 
-registry_config:
-    _info:
-        title: Generate registry login auth config.json file
-        desc: |
-            When using private image registries use this to generate docker style config.json files.
-            Podman uses the file when pulling from private registries.
-            If you already have an existing config.json file you want to use, place it in the cluster base dir
-            as registry-config.json.
-            
-            Put lines on stdin as "registry.url:username:password"
-    _env:
-        - host:
-            title: Host name to generate for, leave blank to generate default for cluster. Set to '-' to output to stdout
+pod:
+    ls:
+        _info:
+            title: Get state for all pod version on one or all hosts
+        _env:
+            - state:
+                title: state to filter for, if any.
+                values:
+                    - running
+                    - stopped
+                    - removed
+            - quite:
+                title: Set to true to do show state column
+                values:
+                    - false
+                    - true
+            - pod:
+                title: Optional pod to get logs for, as: pod[@host]
+            - RUN: LS_POD_RELEASE_STATE -- "${state}" "${quite}" "${pod}"
+
+    compile_pod:
+        _info:
+            title: Compile the current pod version to all (or one) host(s) which it is already attached to.
             desc: |
-                If wanting to append to an existing config, you will need to do that manually by outputting this to stdout
-                and editing the json file by hand injecting the snippet.
-        - RUN: REGISTRY_CONFIG -- "${host}"
+                Compile a pod spec residing in the pods repo into all/one hosts to which it is already attached to.
+                A pod.yaml spec will be parsed and stored in the host pods/podname/version dir.
+                If the same version of the pod spec already exists on the host it will not be overwritten.
+                Even if the cluster.env file has updated to a newer version the final spec will still not be overwritten.
+                This is an idempotent command and it will not do anything if the pod version is already existing on a host.
+                This command will abort if the pod.yaml or the cluster.env files have are currenly in an edited but non committed state.
+        _env:
+            - pod:
+                title: The name of the pod to compile, as pod[@host]
+                desc: |
+                    Optional name of the host to compile spec into, default is all hosts to which the pod is attached
+            - RUN: COMPILE_POD -- "${pod}"
 
-rerun:
-    _info:
-        title: Rerun a pod or specific containers in a pod
-        desc: |
-            If a pod is in the running state this command can rerun the full pod.
-            A rerun is a total tear down of the pod and all containers and a recreation and restart.
-            Simplenetes has no concept of restarting/resuming pods/containers.
-            A rerun stops, removes and runs the pod/containers as brand new instances.
-            If containers are provided as arguments then only those container(s) are rerun.
-    _env:
-        - pod:
-            title: The name (and version) of the pod, as pod[:version][@host]
+    updateconfig:
+        _info:
+            title: Re-copy the pod config in the cluster to a specific pod release.
             desc: |
-                If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
-                If host is omitted then rerun for all hosts it is attached to.
-        - RUN: RERUN_POD -- "${pod}" ${containers}
+                Copy the configs from the general pod config directory of this cluster into a specific pod release.
+                This is useful when you want to update an already released pods config volumes.
+                This replaces the pods current configs.
+                The pod release will need to be resynced with the cluster.
+        _env:
+            - pod:
+                title: The name (and version) of the pod to copy configs to: pod[:version][@host]
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+            - RUN: UPDATE_POD_CONFIG -- "${pod}"
 
-ls_pods:
-    _info:
-        title: List all external pod specifications
-        desc: |
-            These are all the existing pod specifications in the associated pods directory.
-            This list does not say anything about which pods are attached to which hosts, if any.
-    _env:
-        - RUN: LIST_PODS
+    ingress:
+        _info:
+            title: Set the desired ingress state of a specific pod version on one/all attached hosts.
+        _env:
+            - state:
+                title: The desired state to set for the pod version ingress
+                desc: If not set then get the state.
+                values:
+                    - active
+                    - inactive
+            - pod:
+                title: The name (and version) of the pod, as pod[:version][@host]
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+                    Multiple pods can be provided on cmd line as: -- poda podb
+            - RUN: POD_INGRESS_STATE "${state}" -- "${pod}"
 
+    state:
+        _info:
+            title: Get or sSet the desired state of a specific pod version on one or all attached hosts.
+        _env:
+            - state:
+                title: The desired state of the pod release. Leave black to get state.
+                values:
+                    - removed
+                    - stopped
+                    - running
+            - pod:
+                title: The name (and version) of the pod, as pod[:version][@host]
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+                    Multiple pods can be provided on cmd line as: -- poda podb
+            - RUN: POD_RELEASE_STATE "${state}" -- "${pod}"
 
-cmdline:
+    ps:
+        _info:
+            title: Get ready status for the pod
+        _env:
+            - readiness:
+                title: Set to 'true' to only get the readiness status of the pod
+                values:
+                    - true
+                    - false
+            - quite:
+                title: Set to 'true' to not output info but instead return 1 if not in healthy state
+                values:
+                    - true
+                    - false
+            - pod:
+                title: Pod to get status for, as: pod[:version][@host]
+            - RUN: GET_POD_STATUS -- "${readiness}" "${quite}" "${pod}"
+
+    info:
+        _info:
+            title: Get static info of a pod
+        _env:
+            - pod:
+                title: Pod to get info for, as: pod[:version][@host]
+            - RUN: GET_POD_INFO -- "${pod}"
+
+    logs:
+        _info:
+            title: Get logs for a pod
+        _env:
+            - timestamp:
+                title: UNIX timestamp from since to get logs
+            - limit:
+                title: limit nr of lines from top or from bottom if negative
+            - streams:
+                title: Get log for STDOUT and/or STDERR
+                values:
+                    - stdout
+                    - stderr
+                    - stdout,stderr
+            - details:
+                title: What details to show, comma separated. Default is ts,name
+                values:
+                    - ts
+                    - age
+                    - name
+                    - stream
+            - daemonProcess:
+                title: Set to also show the pod daemon management process.
+                values:
+                    - false
+                    - true
+            - pod:
+                title: Pod to get logs for, as: pod[:version][@host]
+            - containers:
+                title: Containers to get logs for. Leave blank for all.
+            - RUN: LOGS -- "${timestamp}" "${limit}" "${streams}" "${details}" "${daemonProcess}" "${pod}" -- ${containers}
+
+    signal:
+        _info:
+            title: Signal a pod's containers
+        _env:
+            - pod:
+                title: The name (and version) of the pod, as pod[:version][@host]
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+            - containers:
+                title: Specific containers to signal, default is all
+            - RUN: SIGNAL_POD -- "${pod}" ${containers}
+
+    rerun:
+        _info:
+            title: Rerun a pod or specific containers in a pod
+            desc: |
+                If a pod is in the running state this command can rerun the full pod.
+                A rerun is a total tear down of the pod and all containers and a recreation and restart.
+                Simplenetes has no concept of restarting/resuming pods/containers.
+                A rerun stops, removes and runs the pod/containers as brand new instances.
+                If containers are provided as arguments then only those container(s) are rerun.
+        _env:
+            - pod:
+                title: The name (and version) of the pod, as pod[:version][@host]
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+                    If host is omitted then rerun for all hosts it is attached to.
+            - containers:
+                title: Specific containers to rerun, default is all
+            - RUN: RERUN_POD -- "${pod}" ${containers}
+
+    release:
+        _info:
+            title: Perform a release of a new pod version
+            desc: |
+                Compile the pod and release it in a orchestrated manner.
+                A release can be "soft", "hard" or "safe".
+        _env:
+            - pod:
+                title: The name of the pod.
+            - mode:
+                title: Mode to use when rolling out the new version
+                values:
+                    - soft
+                    - hard
+                    - safe
+            - push:
+                title: Set to true to perform 'git push' operations
+                values:
+                    - false
+                    - true
+            - force:
+                title: Set to true to force sync even when commit chain does not match
+                values:
+                    - false
+                    - true
+            - RUN: RELEASE -- "${pod}" "${mode}" "${push}" "${force}"
+
+    shell:
+        _info:
+            title: Enter into a shell in a pods container
+        _env:
+            - pod:
+                title: Pod to get status for, as: pod[:version][@host]
+            - container:
+                title: The name of the container to enter. Default is the last container in the order it was defined in the pod.yaml specification.
+            - useBash:
+                title: Set to 'true' to force bash shell
+            - commands:
+                title: Set to execute commands instead of entering interactive shell
+            - RUN: POD_SHELL -- "${useBash}" "${container}" "${pod}" -- ${commands}
+
+    delete:
+        _info:
+            title: Delete a pod release from the project
+            desc: |
+                The reason to delete an already removed pod is to free up the ports it has allocated.
+                Only pods in the "removed" state can be deleted.
+                A deleted pod release is renamed to ".releaseVersion.<unixTS>"
+        _env:
+            - pod:
+                title: The name (and version) of the pod, as pod[:version][@host]
+                desc: |
+                    If version is omitted then it defaults to ":latest" which will search for the latest version of releases.
+                    If host is omitted then delete for all hosts it is attached to.
+                    Multiple pods can instead be provided as cmd line arguments.
+            - RUN: DELETE_POD -- "${pod}"
+
+_cmdline:
     _info:
         title: Use sns as a standalone cmd line tool
     _env:
@@ -539,7 +561,6 @@ cmdline:
         - CLUSTERPATH: \${CLUSTERPATH:-\$PWD}
         - PODPATH: \${PODPATH:-\$CLUSTERPATH/_pods}
         - RUN: SNT_CMDLINE -- "\$@"
-
 
 _remote_plumbing:
     _info:

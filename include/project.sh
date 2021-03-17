@@ -208,7 +208,7 @@ _PRJ_GEN_INGRESS_CONFIG()
     local ingressConfDir="${CLUSTERPATH}/_config/${ingressPod}/conf"
 
     if [ ! -d "${ingressTplDir}" ]; then
-        PRINT "Ingress pod ${ingressPod} has no tpl configs in the cluster. Maybe you should import configs for the ingress pod first?" "error" 0
+        PRINT "Ingress pod ${ingressPod} has no tpl configs in the cluster. Maybe you need to import configs for the ingress pod first?" "error" 0
         return 1
     fi
 
@@ -330,7 +330,8 @@ _PRJ_GEN_INGRESS_CONFIG()
         # Different
         PRINT "Updating haproxy.cfg in ${ingressConfDir}" "info" 0
         printf "%s\\n" "${haproxyConf}" >"${haproxyConfPath}"
-        PRINT "Now you need to run 'sns update-config ${ingressPod}:${podVersion}' and then 'sns sync' to put the updated ingress configuration live" "debug" 0
+        # TODO: do this automatically?
+        PRINT "Now you need to run 'sns pod updateconfig ${ingressPod}:${podVersion}' and then 'sns cluster sync' to put the updated ingress configuration live" "debug" 0
     else
         PRINT "No changes in ingress to be made." "info" 0
     fi
@@ -340,7 +341,7 @@ _PRJ_GEN_INGRESS_CONFIG()
 
 _PRJ_HOST_SHELL()
 {
-    SPACE_SIGNATURE="host superUser useBash"
+    SPACE_SIGNATURE="host superUser useBash [commands]"
     SPACE_DEP="PRINT _PRJ_DOES_HOST_EXIST _REMOTE_EXEC"
     SPACE_ENV="CLUSTERPATH"
 
@@ -365,28 +366,28 @@ _PRJ_HOST_SHELL()
             PRINT "host-superuser.env file does not exist for this host" "error" 0
             return 1
         fi
-        _REMOTE_EXEC "${host}:${hostEnv}" "host_shell" "${useBash}"
+        _REMOTE_EXEC "${host}:${hostEnv}" "host_shell" "${useBash}" "$@"
     else
         PRINT "Enter shell of host ${host}" "info" 0
-        _REMOTE_EXEC "${host}" "host_shell" "${useBash}"
+        _REMOTE_EXEC "${host}" "host_shell" "${useBash}" "$@"
     fi
 
 }
 
 _PRJ_POD_SHELL()
 {
-    SPACE_SIGNATURE="useBash podTriple [container]"
+    SPACE_SIGNATURE="useBash container podTriple [commands]"
     SPACE_DEP="PRINT _PRJ_LIST_ATTACHEMENTS _PRJ_DOES_HOST_EXIST _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE _REMOTE_EXEC"
     SPACE_ENV="CLUSTERPATH"
 
     local useBash="${1:-false}"
     shift
 
-    local podTriple="${1}"
+    local container="${1:-}"
     shift
 
-    local container="${1:-}"
-    shift $(($# > 0 ? 1 : 0))
+    local podTriple="${1}"
+    shift
 
     local pod=
     local version=
@@ -422,7 +423,7 @@ _PRJ_POD_SHELL()
         fi
 
         PRINT "Enter shell of ${pod}:${podVersion}@${host} ${container}" "info" 0
-        _REMOTE_EXEC "${host}" "pod_shell" "${pod}" "${podVersion}" "${container}" "${useBash}"
+        _REMOTE_EXEC "${host}" "pod_shell" "${pod}" "${podVersion}" "${container}" "${useBash}" "$@"
         # Error code passed on
     done
 }
@@ -574,6 +575,7 @@ _PRJ_GET_POD_INFO()
             continue
         fi
 
+        printf "host: %s\\n" "${host}"
         ${podFile} info
     done
 }
@@ -766,70 +768,69 @@ _PRJ_GET_DAEMON_LOG()
     done
 }
 
-# Return the pod.version.state file
+# Return the pod.version.state file of one or many pod releases.
 _PRJ_GET_POD_RELEASE_STATES()
 {
-    SPACE_SIGNATURE="podTriple quite"
+    SPACE_SIGNATURE="podTriples"
     SPACE_DEP="_PRJ_LIST_ATTACHEMENTS PRINT _PRJ_DOES_HOST_EXIST _PRJ_GET_POD_RELEASE_STATE _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE"
     SPACE_ENV="CLUSTERPATH"
 
-    local podTriple="${1}"
+    local podTriples="${1}"
     shift
 
-    local quite="${1:-false}"
-    shift
+    local podtriple=
 
-    local pod=
-    local version=
-    local host=
-    if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
-        return 1
-    fi
-
-    local hosts=
-    if [ -n "${host}" ]; then
-        if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
-            PRINT "Host ${host} does not exist." "error" 0
+    for podTriple in ${podTriples}; do
+        local pod=
+        local version=
+        local host=
+        if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
             return 1
         fi
 
-        hosts="${host}";
-    else
-        hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
-    fi
-    unset host
+        local hosts=
+        if [ -n "${host}" ]; then
+            if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+                PRINT "Host ${host} does not exist." "error" 0
+                return 1
+            fi
 
-    if [ -z "${hosts}" ]; then
-        PRINT "Pod is not attached to any host" "warning" 0
-        return
-    fi
-
-    local podVersion=
-    local host=
-    for host in ${hosts}; do
-        if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
-            #PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
-            continue
-        fi
-
-        local state=
-        if ! state="$(_PRJ_GET_POD_RELEASE_STATE "${host}" "${pod}" "${podVersion}")"; then
-            #PRINT "Version ${podVersion} state not found on host ${host}. Skipping." "warning" 0
-            continue
-        fi
-
-        if [ "${quite}" = "true" ]; then
-            printf "%s\\n" "${state}"
+            hosts="${host}"
         else
-            printf "%s:%s@%s %s\\n" "${pod}" "${podVersion}" "${host}" "${state}"
+            hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
         fi
-    done
+
+        if [ -z "${hosts}" ]; then
+            if [ -n "${host}" ]; then
+                PRINT "Pod is not attached to host ${host}" "error" 0
+                return 1
+            fi
+            continue
+        fi
+
+        local podVersion=
+        local host=
+        for host in ${hosts}; do
+            if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+                #PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
+                continue
+            fi
+
+            local state=
+            if ! state="$(_PRJ_GET_POD_RELEASE_STATE "${host}" "${pod}" "${podVersion}")"; then
+                #PRINT "Version ${podVersion} state not found on host ${host}. Skipping." "warning" 0
+                continue
+            fi
+
+            printf "%s:%s@%s %s\\n" "${pod}" "${podVersion}" "${host}" "${state}"
+        done
+    done | sort
 }
 
 _PRJ_LS_POD_RELEASE_STATE()
 {
-    SPACE_SIGNATURE="filterState:0 quite:0 podTriple"
-    SPACE_DEP="_PRJ_LIST_ATTACHEMENTS PRINT _PRJ_DOES_HOST_EXIST _PRJ_GET_POD_RELEASE_STATE _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE _PRJ_GET_POD_RELEASES"
+    SPACE_SIGNATURE="filterState:0 quite:0 [host]"
+    SPACE_DEP="PRINT _PRJ_DOES_HOST_EXIST _PRJ_GET_POD_RELEASE_STATE _PRJ_GET_POD_RELEASES _PRJ_LIST_PODS_BY_HOST"
     SPACE_ENV="CLUSTERPATH"
 
     local filterState="${1:-}"
@@ -838,8 +839,8 @@ _PRJ_LS_POD_RELEASE_STATE()
     local quite="${1:-false}"
     shift
 
-    local podTriple="${1}"
-    shift
+    local host="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
 
     if [ -n "${filterState}" ]; then
         if [ "${filterState}" = "running" ] || [ "${filterState}" = "stopped" ] || [ "${filterState}" = "removed" ]; then
@@ -851,63 +852,40 @@ _PRJ_LS_POD_RELEASE_STATE()
         fi
     fi
 
-    if [ "${podTriple#*:}" != "${podTriple}" ]; then
-        PRINT "Do not specify version for pod. Argument only as 'pod[@host]'" "error" 0
-        return 1
-    fi
-
-    local pod=
-    local version=
-    local host=
-    if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
-        return 1
-    fi
-
-
     local hosts=
     if [ -n "${host}" ]; then
         if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
             PRINT "Host ${host} does not exist." "error" 0
             return 1
         fi
-
         hosts="${host}"
     else
-        hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
+        hosts="$(_PRJ_LIST_HOSTS 1)"
     fi
     unset host
 
-    if [ -z "${hosts}" ]; then
-        PRINT "Pod '${pod}' is not attached to any host" "warning" 0
-        return
-    fi
-
     local host=
     for host in ${hosts}; do
-        if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
-            #PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
-            continue
-        fi
 
-        local podVersions="$(_PRJ_GET_POD_RELEASES "${host}" "${pod}")"
-        local podVersion=
-        for podVersion in ${podVersions}; do
-            local state=
-            if ! state="$(_PRJ_GET_POD_RELEASE_STATE "${host}" "${pod}" "${podVersion}")"; then
-                continue
-            fi
-            if [ -n "${filterState}" ]; then
-                if [ "${filterState}" != "${state}" ]; then
+        local pods="$(_PRJ_LIST_PODS_BY_HOST "${host}")"
+        local pod=
+        for pod in ${pods}; do
+            local versions="$(_PRJ_GET_POD_RELEASES "${host}" "${pod}")"
+            for version in ${versions}; do
+                local state="$(_PRJ_GET_POD_RELEASE_STATE "${host}" "${pod}" "${version}")"
+                if [ -n "${filterState}" ] && [ "${state}" != "${filterState}" ]; then
                     continue
                 fi
-            fi
-            if [ "${quite}" = "true" ]; then
-                printf "%s:%s@%s\\n" "${pod}" "${podVersion}" "${host}"
-            else
-                printf "%s:%s@%s %s\\n" "${pod}" "${podVersion}" "${host}" "${state}"
-            fi
+
+                # Output
+                if [ "${quite}" = "true" ]; then
+                    printf "%s:%s@%s\\n" "${pod}" "${version}" "${host}"
+                else
+                    printf "%s:%s@%s %s\\n" "${pod}" "${version}" "${host}" "${state}"
+                fi
+            done
         done
-    done |sort
+    done | sort
 }
 
 # Delete a pod release which is in the "removed" state.
@@ -978,7 +956,7 @@ _PRJ_DELETE_POD()
 }
 
 
-# Set the pod.version.state file
+# Set the pod.version.state file of one or many pod releases.
 _PRJ_SET_POD_RELEASE_STATE()
 {
     SPACE_SIGNATURE="state podTriples"
@@ -1191,10 +1169,10 @@ _PRJ_SIGNAL_POD2()
     return "${status}"
 }
 
-# Set the .pod.ingress.conf file active/inactive
+# Get or set the .pod.ingress.conf file active/inactive
 # state=active|inactive
 # Multiple podTriples can be provided
-_PRJ_SET_POD_INGRESS_STATE()
+_PRJ_POD_INGRESS_STATE()
 {
     SPACE_SIGNATURE="state podTriples"
     SPACE_DEP="_PRJ_LIST_ATTACHEMENTS PRINT _PRJ_LOG_P _PRJ_DOES_HOST_EXIST _PRJ_FIND_POD_VERSION _PRJ_SPLIT_POD_TRIPLE"
@@ -1244,6 +1222,18 @@ _PRJ_SET_POD_INGRESS_STATE()
 
             if [ ! -d "${targetPodDir}" ]; then
                 PRINT "Pod ${pod}:${podVersion} not found on host ${host}. Skipping." "warning" 0
+                continue
+            fi
+
+            if [ -z "${state}" ]; then
+                # Output state
+                local currentState="none"
+                if [ -f "${targetPodIngressConfFile}.inactive" ]; then
+                    currentState="inactive"
+                elif [ -f "${targetPodIngressConfFile}" ]; then
+                    currentState="active"
+                fi
+                printf "%s:%s@%s %s\\n" "${pod}" "${podVersion}" "${host}" "${currentState}"
                 continue
             fi
 
@@ -1747,7 +1737,8 @@ _PRJ_CLUSTER_IMPORT_POD_CFG()
     fi
 
     if [ -d "${clusterPodConfigDir}" ]; then
-        PRINT "Cluster config for the pod '${pod}' already exists, will overwrite." "warning" 0
+        PRINT "Cluster config for the pod '${pod}' already exists, will overwrite in 3 seconds..." "warning" 0
+        sleep 3
     fi
 
     mkdir -p "${CLUSTERPATH}/_config"
@@ -1944,16 +1935,10 @@ _PRJ_ATTACH_POD()
     fi
 }
 
-_PRJ_LIST_PODS()
-{
-    SPACE_ENV="PODPATH"
-    (cd "${PODPATH}" && find . -maxdepth 2 -mindepth 2 -type f -name pod.yaml |cut -d/ -f2)
-}
-
 # Run as superuser
 _PRJ_HOST_SETUP()
 {
-    SPACE_SIGNATURE="host"
+    SPACE_SIGNATURE="host [skipFirewall skipSystemd skipPodman]"
     SPACE_DEP="_REMOTE_EXEC PRINT _PRJ_DOES_HOST_EXIST SSH_KEYGEN STRING_ITEM_INDEXOF STRING_TRIM"
     SPACE_ENV="CLUSTERPATH"
 
@@ -2069,7 +2054,7 @@ _PRJ_HOST_SETUP()
     fi
 
     local status=
-    cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "setup_host" "${USER}" "${EXPOSE}" "${INTERNAL}"
+    cat "${pubKey}" | _REMOTE_EXEC "${host}:${hostEnv2}" "setup_host" "${USER}" "${EXPOSE}" "${INTERNAL}" "$@"
     status="$?"
     if [ "${status}" -eq 0 ]; then
         return 0
@@ -2187,6 +2172,8 @@ KEYFILE=${superKeyFile}
 
 # Worker hosts are often not exposed to the public internet and to connect to them over SSH a JUMPHOST is needed.
 JUMPHOST=${JUMPHOST}" >"${hostEnv3}"
+
+    PRINT "Super user successfully created." "ok" 0
 }
 
 _PRJ_HOST_DISABLE_ROOT()
@@ -2213,8 +2200,8 @@ _PRJ_HOST_DISABLE_ROOT()
     local status=
     _REMOTE_EXEC "${host}:${hostEnv}" "disable_root"
     status="$?"
-    rm "${hostEnv2}"
     if [ "${status}" -eq 0 ]; then
+        PRINT "Root account disabled" "ok" 0
         return 0
     fi
 
@@ -2464,7 +2451,7 @@ JUMPHOST=${jumphost}" >"${dir}/host-superuser.env"
 
     fi
 
-    PRINT "Host ${host} created" "ok" 0
+    PRINT "Host ${host} created at ${dir}" "ok" 0
     _PRJ_LOG_C "CREATE_HOST ${host}"
 }
 
@@ -2502,7 +2489,7 @@ _PRJ_CLUSTER_CREATE()
     git init &&
     git add . &&
     git commit -m "Initial" &&
-    PRINT "Cluster repo successfully created" "ok" 0 &&
+    PRINT "Cluster repo successfully created at ${CLUSTERPATH}" "ok" 0 &&
     _PRJ_LOG_C "CREATED-CLUSTER-PROJECT" || return 1
 }
 
@@ -2911,8 +2898,8 @@ _PRJ_IS_POD_ATTACHED()
 #  2=only active
 _PRJ_LIST_HOSTS()
 {
-    SPACE_SIGNATURE="filter [showState]"
-    SPACE_DEP="_PRJ_GET_HOST_STATE"
+    SPACE_SIGNATURE="filter [showState pod]"
+    SPACE_DEP="_PRJ_GET_HOST_STATE _PRJ_LIST_ATTACHEMENTS"
     SPACE_ENV="CLUSTERPATH"
 
     local filter="${1:-1}"
@@ -2921,8 +2908,16 @@ _PRJ_LIST_HOSTS()
     local showState="${1:-false}"
     shift $(($# > 0 ? 1 : 0))
 
+    local pod="${1:-}"
+    shift $(($# > 0 ? 1 : 0))
+
     local hosts=
-    hosts="$(cd "${CLUSTERPATH}" && find . -maxdepth 2 -mindepth 2 -type f -regex "^./[^.][^/]*/host\.env\$" |cut -d/ -f2)"
+    if [ -n "${pod}" ]; then
+        hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
+    else
+        hosts="$(cd "${CLUSTERPATH}" && find . -maxdepth 2 -mindepth 2 -type f -regex "^./[^.][^/]*/host\.env\$" |cut -d/ -f2)"
+
+    fi
 
     local host=
     for host in ${hosts}; do
