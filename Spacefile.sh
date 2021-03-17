@@ -784,11 +784,11 @@ Pod commands:
 
 VERSION()
 {
-    printf "%s\\n" "Simplenetes 0.3"
+    printf "%s\\n" "Simplenetes 0.3.0"
 }
 
 # options are on the format:
-# "_out_all=-a,--all/ _out_state=-s,--state/arg1;arg2;arg3"
+# "_out_all=-a,--all/ _out_state=-s,--state/arg1|arg2|arg3"
 # For non argument options the variable will be increased by 1 for each occurrence.
 # The variable _out_arguments is reserved for positional arguments.
 # Expects _out_arguments and all _out_* to be defined.

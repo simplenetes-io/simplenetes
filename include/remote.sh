@@ -435,7 +435,7 @@ _REMOTE_POD_STATUS()
             printf "not-ready\\n"
         fi
     else
-        ${podFile} status
+        ${podFile} ps
     fi
 }
 
@@ -626,7 +626,7 @@ _REMOTE_HOST_SETUP()
 
         # TODO: set the release tag and version
         local tag="master"
-        local version="Simplenetesd 0.3"
+        local version="Simplenetesd 0.3.0"
 
         local binaryUpdate="true"
         local daemonFile="/usr/bin/simplenetesd"
