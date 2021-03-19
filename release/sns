@@ -12,7 +12,7 @@
 set -u  # Will not allow for unset variables being used.
 
 CLUSTERPATH="${CLUSTERPATH:-$PWD}"
-PODPATH="${PODPATH:-$CLUSTERPATH/_pods}"
+PODPATH="$CLUSTERPATH/../pods"
 REMOTE_PACK_RELEASEDATA="#!/usr/bin/env sh
 # Script assembled and exported by:
 #     ___ ___  ___  ____ ____  ___ __ __
@@ -2709,6 +2709,9 @@ _REMOTE_HOST_SETUP()
     local user=\"\${1}\"
     shift
 
+    local superuser=\"\${1}\"
+    shift
+
     local ports=\"\${1}\"
     shift
 
@@ -2729,12 +2732,54 @@ _REMOTE_HOST_SETUP()
         return 1
     fi
 
-    # Create regular user
+    # Catch all pub keys coming in on stdin
+    local contents=\"\$(cat)\"
+
+    # Extract user keys and super user keys
+    local pubKeyLines=\"\"
+    local superPubKeyLines=\"\"
+    local stage=0
+    local ifs=\"\${IFS}\"
+    IFS=\"
+\"
+    for line in \${contents}; do
+        if [ \"\${line}\" = \"---\" ]; then
+            stage=\$((stage+1))
+            continue
+        fi
+        if [ \"\${stage}\" -eq 0 ]; then
+            pubKeyLines=\"\${pubKeyLines}\${line}
+\"
+        elif [ \"\${stage}\" -eq 1 ]; then
+            superPubKeyLines=\"\${superPubKeyLines}\${line}
+\"
+        else
+            return 1
+        fi
+    done
+    IFS=\"\${ifs}\"
+
+    if [ -z \"\${pubKeyLines}\" ] || [ -z \"\${superPubKeyLines}\" ]; then
+        PRINT \"Missing keys on stdin.\" \"error\" 0
+        return 1
+    fi
+
+    local singleKey=\"\$(printf \"%s\\\\\" \"\${pubKeyLines}\" | head -n1)\"
+
+    # Create regular user, but we can only pass a single pub key.
     # NOTE: pub key on stdin will get written to ~/.ssh/authorized_keys
-    if ! _OS_CREATE_USER \"\${user}\"; then
+    if ! printf \"%s\\n\" \"\${singleKey}\" | _OS_CREATE_USER \"\${user}\"; then
         PRINT \"Could not create user \${user}\" \"error\" 0
         return 1
     fi
+
+    # Now write the complete user authorized_keys file
+    local authorized_keys=\"/home/\${user}/.ssh/authorized_keys\"
+    printf \"%s\" \"\${pubKeyLines}\" >\"\${authorized_keys}\"
+
+    # Write the super user keys
+    local authorized_keys=\"/home/\${superuser}/.ssh/authorized_keys\"
+    printf \"%s\" \"\${superPubKeyLines}\" >\"\${authorized_keys}\"
 
     if [ \"\${skipPodman}\" != \"true\" ]; then
         # Install podman
@@ -2836,10 +2881,10 @@ _REMOTE_HOST_SETUP()
 
         # TODO: set the release tag and version
         local tag=\"master\"
-        local version=\"Simplenetesd 0.3\"
+        local version=\"Simplenetesd 0.3.0\"
 
         local binaryUpdate=\"true\"
-        local daemonFile=\"/usr/bin/simplenetesd\"
+        local daemonFile=\"/bin/simplenetesd\"
         if [ -f \"\${daemonFile}\" ]; then
             # Check version
             local ver=\"\$(\"\${daemonFile}\" -V)\"
@@ -2870,7 +2915,7 @@ After=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root
-ExecStart=\${daemonFile} -o /root/simplenetesd.log
+ExecStart=/usr/bin/env sh \${daemonFile}
 Restart=always
 KillMode=process
 
@@ -3518,9 +3563,9 @@ _REMOTE_LOGS()
     fi
 
     if [ \"\${showProcessLog}\" = \"true\" ]; then
-        \${podFile} logs -l \"\${limit}\" -t \"\${timestamp}\" -s \"\${streams}\" -d \"\${details}\" -p \"\$@\"
+        \${podFile} logs \${limit:+-l \$limit} \${timestamp:+-t \$timestamp} \${streams:+-s \$streams} \${details:+-d \$details} -p \"\$@\"
     else
-        \${podFile} logs -l \"\${limit}\" -t \"\${timestamp}\" -s \"\${streams}\" -d \"\${details}\" \"\$@\"
+        \${podFile} logs \${limit:+-l \$limit} \${timestamp:+-t \$timestamp} \${streams:+-s \$streams} \${details:+-d \$details} \"\$@\"
     fi
 }
 
@@ -5315,7 +5360,7 @@ _REMOTE_POD_STATUS()
             printf \"not-ready\\n\"
         fi
     else
-        \${podFile} status
+        \${podFile} ps
     fi
 }
 
@@ -6626,8 +6671,16 @@ SNT_CMDLINE()
         fi
     fi
 
+    if [ -z "${PODPATH}" ]; then
+        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/_pods")"
+        PRINT "Setting PODPATH: ${PODPATH}" "debug" 0
+    else
+        mkdir -p "${PODPATH}"
+    fi
+
     if [ ! -d "${PODPATH}" ]; then
         PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
+        mkdir -p "${PODPATH}"
         PRINT "Setting new PODPATH: ${PODPATH}" "debug" 0
     fi
 
@@ -6683,6 +6736,21 @@ Cluster commands:
 
     -x, --exclude-cluster-ports=excludeClusterPorts
         Comma separated string of clusterPorts to exclude from the Ingress configuration.
+
+  cluster registry [<host>|-]
+    Generate a Docker standard config.json file from data read on stdin.
+    This file can be used by Podman on the host to authorize to private image registries.
+    This file is stored as registry-config.json either in the cluster dir or in a specific host dir if the host name is provided as argument.
+    The file is synced to the host when running 'host setup init', and stored as '~./docker/config.json'.
+    If you already have an existing Docker 'config.json' file you can place that in in
+    the cluster dir or in a host dir named as registry-config.json.
+
+    If host is set to '-' then output to stdout instead of writing to disk.
+    This can be useful when manually appending to already existing files.
+
+    stdin
+        Pass data on stdin as (multiple lines allowed):
+        registry-url:username:password\\n
 
 
 Host commands:
@@ -6759,6 +6827,8 @@ Host commands:
     Run this command after setup superuser and disableroot.
     This command is idempotent and is safe to run multiple times.
     If the EXPOSE or INTERNAL variables in host.env are changed then this action need to be run again.
+    Public keys ('pubkeys/\*.pub') are set in the authorized_keys file on the remote host. Also the current pub key from host.env is added.
+    Public keys ('pubkeys.superuser/\*.pub') are added to the authorized_keys file on the remote host for the super user. Also the current pub key from host-superuser.env is added.
     This command cannot be run for "local" disk based hosts.
     Note that superuser must have password free access to the sudo command.
 
@@ -6771,6 +6841,16 @@ Host commands:
 
     --skip-podman
         Do not install and configure podman.
+
+    --strict-user-keys
+        Only allow public keys put in the host's 'pubkeys' directory to connect to the host as regular user.
+        Without this option also the current key referenced from host.env is also added.
+        Use this option to remove your own user from the authorized_keys file on the remote host.
+
+    --strict-super-user-keys
+        Only allow public keys put in the host's 'pubkeys.superuser' directory to connect to the host as the super user.
+        Without this option also the current key referenced from host-superuser.env is also added.
+        Use this option to remove your own super user from the authorized_keys file on the remote host.
 
   host init <host>
     Initialize a host to be part of the cluster by writing the cluster-id.txt file to
@@ -6801,7 +6881,7 @@ Host commands:
   host attach <pod@host>
     Attach a Pod to a host, this does not deploy anything nor release anything.
     Host must exist in the cluster project.
-    Pod must exist on PODPATH, unles --link is provided.
+    Pod must exist on PODPATH, unless --link is provided.
 
     -l, --link  optional git url for the pod repo.
         If set the repo is cloned into PODPATH if not already existing.
@@ -6821,9 +6901,11 @@ Host commands:
 
     -s, --state=active|inactive|disabled
         If option provided then set the state in the host.state file.
-        active   - has ingress, internal proxy routing and are synced.
-        inactive - no ingress, no internal proxy routing but are still synced.
-        disabled - no ingress, no internal proxy routing and not synced. Just ignored.
+        active   - has ingress, internal proxy routing and is synced.
+        inactive - no ingress, no incoming internal proxy routing but is still synced.
+                   Pods can still be attached, compiled and released, but will not get any incoming traffic.
+                   Use this to phase out a host but let it finish it's current sockets.
+        disabled - no ingress, no incoming internal proxy routing and is not synced. Just ignored.
 
   host logs <host>
     Get the simplenetes systemd daemon logs for one or all hosts.
@@ -6842,26 +6924,12 @@ Host commands:
         Commands are optional and will be run instead of entering the interactive shell.
         Commands must be places after any option switches and after a pair of dashes '--', so that arguments are not parsed by sns.
 
-  host registry [<host>|-]
-    Generate a Docker standard config.json file from data read on stdin.
-    This file can be used by Podman on the host to authorize to private image registries.
-    This file is stored as registry-config.json either in the cluster dir or in a specific host dir if the host name is provided as argument.
-    The file is synced to the host when running 'host setup init', and stored as '~./docker/config.json'.
-    If you already have an existing Docker 'config.json' file you can place that in in
-    the cluster dir or in a host dir named as registry-config.json.
-
-    If host is set to '-' then output to stdout instead of writing to disk.
-    This can be useful when manually appending to already existing files.
-
-    stdin
-        Pass data on stdin as (multiple lines allowed):
-        registry-url:username:password\\\n
-
 
 Pod commands:
-  pod ls [<host>]
+  pod ls [[pod[:version]][@host]]
     List pod releases in the cluster.
-    Optionally provide the host to filter by.
+    Optionally provide the pod and/or host to filter by.
+    If pod is provided without version then all versions are considered. If version is set to 'latest' then only latest releases are considered.
 
     -s, --state=running|stopped|removed|all
         Filter for pod state. Default is 'running'.
@@ -6984,6 +7052,7 @@ Pod commands:
     -p, --push
         If set then perform 'git push' operations after each 'git commit'.
         This can be desirable when running in a CI/CD environment and we want to resume an aborted release.
+
     -f, --force
         If set will force sync changes to cluster even if the commit chain differs.
         Use this for rollbacks, or when restoring from a branch-out.
@@ -7010,13 +7079,13 @@ Pod commands:
     If host is left out then delete the pod release version on all attached hosts, as long
     as they are in the 'removed' state.
     Multiple pods can be provided as arguments.
-" >&2
+"
 }
 
 VERSION()
 {
     local _SPACE_NAME="VERSION"
-    printf "%s\\n" "Simplenetes 0.3"
+    printf "%s\\n" "Simplenetes 0.3.0"
 }
 
 _SNT_CMDLINE()
@@ -7066,6 +7135,18 @@ _SNT_CMDLINE()
                 return 1
             fi
             GEN_INGRESS_CONFIG "${_out_arguments}" "${_out_exclude}"
+        elif [ "${command}" = "registry" ]; then
+            local _out_arguments=
+
+            if [ "$#" -gt 1 ]; then
+                printf "Usage: sns cluster registry [<host>|-]\\n
+registry-url:username:password
+etc
+<ctrl-d>
+" >&2
+                return 1
+            fi
+            REGISTRY_CONFIG "${1:-}"
         else
             PRINT "Unknown cluster command '${command}'" "error" 0
             return 1
@@ -7112,16 +7193,18 @@ _SNT_CMDLINE()
                 fi
                 HOST_DISABLE_ROOT "${_out_arguments}"
             elif [ "${object}" = "install" ]; then
+                local _out_strictUserKeys=
+                local _out_strictSuperUserKeys=
                 local _out_skip_firewall=
                 local _out_skip_systemd=
                 local _out_skip_podman=
                 local _out_arguments=
 
-                if ! _GETOPTS "_out_skip_firewall=--skip-firewall/ _out_skip_systemd=--skip-systemd/ _out_skip_podman=--skip-podman/" 1 1 "$@"; then
-                    printf "Usage: sns host setup install <host> [--skip-firewall] [--skip-systemd] [--skip-podman]\\n" >&2
+                if ! _GETOPTS "_out_strictUserKeys=--strict-user-keys/ _out_strictSuperUserKeys=--strict-super-user-keys/ _out_skip_firewall=--skip-firewall/ _out_skip_systemd=--skip-systemd/ _out_skip_podman=--skip-podman/" 1 1 "$@"; then
+                    printf "Usage: sns host setup install <host> [--skip-firewall] [--skip-systemd] [--skip-podman] [--strict-user-keys] [--strict-super-user-keys]\\n" >&2
                     return 1
                 fi
-                HOST_SETUP "${_out_arguments}" "${_out_skip_firewall:+true}" "${_out_skip_systemd:+true}" "${_out_skip_podman:+true}"
+                HOST_SETUP "${_out_arguments}" "${_out_strictUserKeys:+false}" "${_out_strictSuperUserKeys:+false}" "${_out_skip_firewall:+true}" "${_out_skip_systemd:+true}" "${_out_skip_podman:+true}"
             else
                 PRINT "Unknown host setup object '${object}'" "error" 0
                 return 1
@@ -7192,18 +7275,6 @@ _SNT_CMDLINE()
             local host="${1}"
             shift
             HOST_SHELL "${host}" "${_out_s:+true}" "${_out_b:+true}" "$@"
-        elif [ "${command}" = "registry" ]; then
-            local _out_arguments=
-
-            if [ "$#" -gt 1 ]; then
-                printf "Usage: sns host registry [<host>|-]\\n
-registry-url:username:password
-etc
-<ctrl-d>
-" >&2
-                return 1
-            fi
-            REGISTRY_CONFIG "${1:-}"
         else
             PRINT "Unknown host command '${command}'" "error" 0
             return 1
@@ -7977,6 +8048,29 @@ _PRJ_SET_HOST_STATE()
     printf "%s\\n" "${state}" >"${file}"
 }
 
+_PRJ_GET_HOST_STATE()
+{
+    local _SPACE_NAME="_PRJ_GET_HOST_STATE"
+
+    local host="${1}"
+    shift
+
+    if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+        PRINT "Host does not exist" "error" 0
+        return 1
+    fi
+
+    local dir="${CLUSTERPATH}/${host}"
+    local file="${dir}/host.state"
+
+    local state="active"  # active is the default if no state file exists
+    if [ -f "${file}" ]; then
+        state="$(cat "${file}")"
+    fi
+
+    printf "%s\\n" "${state}"
+}
+
 _PRJ_GEN_INGRESS_CONFIG()
 {
     local _SPACE_NAME="_PRJ_GEN_INGRESS_CONFIG"
@@ -8280,6 +8374,62 @@ _PRJ_SET_POD_RELEASE_STATE()
             _PRJ_LOG_P "${host}" "${pod}" "SET_POD_RELEASE_STATE release:${podVersion}=${state}"
         done
     done
+}
+
+_PRJ_GET_POD_RELEASE_STATES()
+{
+    local _SPACE_NAME="_PRJ_GET_POD_RELEASE_STATES"
+
+    local podTriples="${1}"
+    shift
+
+    local podtriple=
+
+    for podTriple in ${podTriples}; do
+        local pod=
+        local version=
+        local host=
+        if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}"; then
+            return 1
+        fi
+
+        local hosts=
+        if [ -n "${host}" ]; then
+            if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
+                PRINT "Host ${host} does not exist." "error" 0
+                return 1
+            fi
+
+            hosts="${host}"
+        else
+            hosts="$(_PRJ_LIST_ATTACHEMENTS "${pod}")"
+        fi
+
+        if [ -z "${hosts}" ]; then
+            if [ -n "${host}" ]; then
+                PRINT "Pod is not attached to host ${host}" "error" 0
+                return 1
+            fi
+            continue
+        fi
+
+        local podVersion=
+        local host=
+        for host in ${hosts}; do
+            if ! podVersion="$(_PRJ_FIND_POD_VERSION "${pod}" "${version}" "${host}")"; then
+                #PRINT "Version ${version} not found on host ${host}. Skipping." "info" 0
+                continue
+            fi
+
+            local state=
+            if ! state="$(_PRJ_GET_POD_RELEASE_STATE "${host}" "${pod}" "${podVersion}")"; then
+                #PRINT "Version ${podVersion} state not found on host ${host}. Skipping." "warning" 0
+                continue
+            fi
+
+            printf "%s:%s@%s %s\\n" "${pod}" "${podVersion}" "${host}" "${state}"
+        done
+    done | sort
 }
 
 _PRJ_DELETE_POD()
@@ -8613,6 +8763,18 @@ _PRJ_COMPILE_POD()
         local newline="
 "
 
+        local podVersion="$(printf "%s\\n" "${text}" |grep -o "^podVersion:[ ]*['\"]\?\([0-9]\+\.[0-9]\+\.[0-9]\+\(-[-.a-z0-9]\+\)\?\)")"
+        podVersion="${podVersion#*:}"
+        STRING_SUBST "podVersion" "'" "" 1
+        STRING_SUBST "podVersion" '"' "" 1
+        STRING_TRIM "podVersion"
+
+        if [ -z "${podVersion}" ]; then
+            PRINT "podVersion is missing. Must be on semver format (major.minor.patch[-tag])." "error" 0
+            state=1
+            break
+        fi
+
         # For each ${HOSTPORTAUTOxyz} we find free host ports and substitute that.
         local variablesAll=""       # For show, all variables read from cluster-vars.env
         local variablesToSubst2=""  # Use this to save variable names for the second sweep of substitutions.
@@ -8620,11 +8782,13 @@ _PRJ_COMPILE_POD()
         local newHostPorts=""       # To keep track of already assigned host ports
         local varname=
         for varname in ${variablesToSubst}; do
-            # Skip underscored variables and podVersion which is automatically provided by podc.
-            if [ "${varname#_}" != "${varname}" ] || [ "${varname}" = "podVersion" ]; then
+            if [ "${varname#_}" != "${varname}" ]; then
+                # Skip underscored variables
                 continue
-            fi
-            if [ "${varname#HOSTPORTAUTO}" != "${varname}" ]; then
+            elif [ "${varname}" = "podVersion" ]; then
+                # Special case where we substitute podVersion with what is defined in the pod.yaml
+                values="${values}${values:+${newline}}${varname}=${podVersion}"
+            elif [ "${varname#HOSTPORTAUTO}" != "${varname}" ]; then
                 # This is an auto host port assignment,
                 # we need to find a free port and assign the variable.
                 local newport=
@@ -8682,18 +8846,6 @@ _PRJ_COMPILE_POD()
         local values2="$(cat "${clusterConfig}")"
         text="$(TEXT_VARIABLE_SUBST "${text}" "${variablesToSubst2}" "${values2}")"
         text="$(printf "%s\\n" "${text}" |TEXT_FILTER)"
-
-        local podVersion="$(printf "%s\\n" "${text}" |grep -o "^podVersion:[ ]*['\"]\?\([0-9]\+\.[0-9]\+\.[0-9]\+\(-[-.a-z0-9]\+\)\?\)")"
-        podVersion="${podVersion#*:}"
-        STRING_SUBST "podVersion" "'" "" 1
-        STRING_SUBST "podVersion" '"' "" 1
-        STRING_TRIM "podVersion"
-
-        if [ -z "${podVersion}" ]; then
-            PRINT "podVersion is missing. Must be on semver format (major.minor.patch[-tag])." "error" 0
-            state=1
-            break
-        fi
 
         if [ -n "${expectedPodVersion}" ] && [ "${expectedPodVersion}" != "${podVersion}" ]; then
             PRINT "Pod source version ${podVersion} does not match the expected version ${expectedPodVersion}" "error" 0
@@ -8999,6 +9151,12 @@ _PRJ_HOST_SETUP()
     local host="${1}"
     shift
 
+    local strictUserKeys="${1:-false}"
+    shift
+
+    local strictSuperUserKeys="${1:-false}"
+    shift
+
     if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
         PRINT "Host ${host} does not exist." "error" 0
         return 1
@@ -9102,13 +9260,47 @@ _PRJ_HOST_SETUP()
     fi
 
     local pubKey="${KEYFILE}.pub"
-    if [ ! -f "${KEYFILE}" ]; then
-        PRINT "Could not find ${pubKey}" "error" 0
-        return 1
+    local pubKeysDir="${CLUSTERPATH}/${host}/pubkeys"
+    local pubKeys=
+    if [ "${strictUserKeys}" = "true" ]; then
+        # Only include keys from the pubkeys dir.
+        pubKeys="${pubKeysDir}/*.pub"
+    else
+        # By default also include our current pub key
+        pubKeys="${pubKey} ${pubKeysDir}/*.pub"
+
+        if [ ! -f "${KEYFILE}" ]; then
+            PRINT "Could not find ${pubKey}" "error" 0
+            return 1
+        fi
+    fi
+
+    local SUPERKEYFILE=
+    SUPERKEYFILE="$(grep -m 1 "^KEYFILE=" "${hostEnv2}")"
+    SUPERKEYFILE="${SUPERKEYFILE#*KEYFILE=}"
+    STRING_TRIM "SUPERKEYFILE"
+
+    SUPERKEYFILE="$(cd "${CLUSTERPATH}/${host}" && FILE_REALPATH "${SUPERKEYFILE}")"
+
+    local SUPERUSER=
+    SUPERUSER="$(grep -m 1 "^USER=" "${hostEnv2}")"
+    SUPERUSER="${SUPERUSER#*USER=}"
+    STRING_TRIM "SUPERUSER"
+
+    local superPubKey="${SUPERKEYFILE}.pub"
+    local superPubKeysDir="${CLUSTERPATH}/${host}/pubkeys.superuser"
+    # By default also include our current super user pub key
+    local superPubKeys=
+    if [ "${strictSuperUserKeys}" = "true" ]; then
+        # Only allow keys in the pubkeys.superuser dir.
+        superPubKeys="${superPubKeysDir}/*.pub"
+    else
+        superPubKeys="${superPubKey} ${superPubKeysDir}/*.pub"
     fi
 
     local status=
-    cat "${pubKey}" | _REMOTE_EXEC "${host}:${hostEnv2}" "setup_host" "${USER}" "${EXPOSE}" "${INTERNAL}" "$@"
+    (cat ${pubKeys} 2>/dev/null | sort | uniq; printf "%s\\n" "---"; cat ${superPubKeys} 2>/dev/null | sort | uniq) | _REMOTE_EXEC "${host}:${hostEnv2}" "setup_host" "${USER}" "${SUPERUSER}" "${EXPOSE}" "${INTERNAL}" "$@"
+
     status="$?"
     if [ "${status}" -eq 0 ]; then
         return 0
@@ -9423,7 +9615,7 @@ _PRJ_HOST_CREATE()
             return 1
         fi
         if [ ! -f "${superUserKey}" ]; then
-            PRINT "Superuser key ${superUserKey} does not exist." "warning" 0
+            PRINT "Superuser key ${superUserKey} does not exist. Please place key pair at: ${superUserKey}" "warning" 0
         fi
     fi
 
@@ -10080,8 +10272,16 @@ _PRJ_LS_POD_RELEASE_STATE()
     local quite="${1:-false}"
     shift
 
-    local host="${1:-}"
+    local podTriple="${1:-}"
     shift $(($# > 0 ? 1 : 0))
+
+    local pod=
+    local version=
+    local host=
+
+    if ! _PRJ_SPLIT_POD_TRIPLE "${podTriple}" "true"; then
+        return 1
+    fi
 
     if [ -n "${filterState}" ]; then
         if [ "${filterState}" = "running" ] || [ "${filterState}" = "stopped" ] || [ "${filterState}" = "removed" ]; then
@@ -10108,25 +10308,38 @@ _PRJ_LS_POD_RELEASE_STATE()
     local host=
     for host in ${hosts}; do
 
-        local pods="$(_PRJ_LIST_PODS_BY_HOST "${host}")"
-        local pod=
-        for pod in ${pods}; do
-            local versions="$(_PRJ_GET_POD_RELEASES "${host}" "${pod}")"
-            for version in ${versions}; do
-                local state="$(_PRJ_GET_POD_RELEASE_STATE "${host}" "${pod}" "${version}")"
+        local podsByHost="$(_PRJ_LIST_PODS_BY_HOST "${host}")"
+        local podOnHost=
+        for podOnHost in ${podsByHost}; do
+            if [ -n "${pod}" ] && [ "${pod}" != "${podOnHost}" ]; then
+                continue
+            fi
+            local versions="$(_PRJ_GET_POD_RELEASES "${host}" "${podOnHost}")"
+            for podVersion in ${versions}; do
+                if [ "${version}" = "latest" ]; then
+                    local latestVersion=
+                    latestVersion="$(_PRJ_FIND_POD_VERSION "${podOnHost}" "latest" "${host}")"
+                    if [ "${latestVersion}" != "${podVersion}" ]; then
+                        continue
+                    fi
+                elif [ -n "${version}" ] && [ "${version}" != "${podVersion}" ]; then
+                    continue
+                fi
+
+                local state="$(_PRJ_GET_POD_RELEASE_STATE "${host}" "${podOnHost}" "${podVersion}")"
                 if [ -n "${filterState}" ] && [ "${state}" != "${filterState}" ]; then
                     continue
                 fi
 
                 # Output
                 if [ "${quite}" = "true" ]; then
-                    printf "%s:%s@%s\\n" "${pod}" "${version}" "${host}"
+                    printf "%s:%s@%s\\n" "${podOnHost}" "${podVersion}" "${host}"
                 else
-                    printf "%s:%s@%s %s\\n" "${pod}" "${version}" "${host}" "${state}"
+                    printf "%s:%s@%s %s\\n" "${podOnHost}" "${podVersion}" "${host}" "${state}"
                 fi
             done
         done
-    done | sort
+    done 
 }
 
 _PRJ_POD_INGRESS_STATE()
@@ -10383,7 +10596,8 @@ _RELEASE()
     # Get a list of the current running versions of the pod.
     local otherVersions="$(_PRJ_LS_POD_RELEASE_STATE "running" "true" "${pod}")"
 
-    local otherVersions2="$(printf "%s\\n" "${otherVersions}" |grep -v "\<${podVersion}\>")"
+    # Filter out the current version.
+    local otherVersions2="$(printf "%s\\n" "${otherVersions}" | grep -v ":\<${podVersion}\>")"
 
     if [ "${otherVersions2}" = "${otherVersions}" ]; then
         _PRJ_LOG_C "RELEASE ${pod}:${podVersion}"
@@ -10654,7 +10868,7 @@ _PRJ_REGISTRY_CONFIG()
             local user="${line#*:}"
             user="${user%:*}"
 
-            local auth="$(printf "%s:%s" "${user}" "${password}" |base64)"
+            local auth="$(printf "%s:%s" "${user}" "${password}" | base64)"
             printf "    ${comma}\"%s\": { \"auth\": \"%s\" }\\n" "${registry}" "${auth}"
             comma=','
         done
@@ -10686,6 +10900,36 @@ _PRJ_DOES_HOST_EXIST()
     shift
 
     [ -f "${hostsPath}/${host}/host.env" ]
+}
+
+_PRJ_SPLIT_POD_TRIPLE()
+{
+    local _SPACE_NAME="_PRJ_SPLIT_POD_TRIPLE"
+
+    local triple="${1}"
+    shift
+
+    local noAuto="${1:-}"
+
+    host="${triple#*@}"
+    if [ "${host}" = "${triple}" ]; then
+        host=""
+    fi
+
+    local rest="${triple%@$host}"
+    version="${rest#*:}"
+    if [ "${version}" = "${rest}" ]; then
+        version=""
+    fi
+    pod="${rest%:$version}"
+    if [ -z "${version}" ] && [ "${noAuto}" != "true" ]; then
+        version="latest"
+    fi
+
+    if [ -z "${pod}" ] && [ "${noAuto}" != "true" ]; then
+        PRINT "Invalid pod format provided, expecting pod[:version][@host]" "error" 0
+        return 1
+    fi
 }
 
 _UTIL_GET_TMP_DIR()
@@ -11324,7 +11568,14 @@ _PRJ_LIST_ATTACHEMENTS()
         return 1
     fi
 
-    (cd "${CLUSTERPATH}" && find . -maxdepth 4 -mindepth 4 -regex "^./[^.][^/]*/pods/${pod}/log\.txt\$" |cut -d/ -f2)
+    _PRJ_LIST_HOSTS "1" | {
+        local host=
+        while IFS='' read -r host; do
+            if _PRJ_IS_POD_ATTACHED "${CLUSTERPATH}" "${host}" "${pod}"; then
+                printf "%s\\n" "${host}"
+            fi
+        done ;
+    }
 }
 
 _PRJ_GET_POD_LOGS2()
@@ -11406,34 +11657,6 @@ _PRJ_FIND_POD_VERSION()
     printf "%s\\n" "${podVersion}"
 }
 
-_PRJ_SPLIT_POD_TRIPLE()
-{
-    local _SPACE_NAME="_PRJ_SPLIT_POD_TRIPLE"
-
-    local triple="${1}"
-    shift
-
-    host="${triple#*@}"
-    if [ "${host}" = "${triple}" ]; then
-        host=""
-    fi
-
-    local podVersion="${triple%@*}"
-    pod="${podVersion%:*}"
-    if [ "${pod}" != "${podVersion}" ]; then
-        version="${podVersion#*:}"
-    fi
-
-    if [ -z "${version}" ]; then
-        version="latest"
-    fi
-
-    if [ -z "${pod}" ]; then
-        PRINT "Invalid pod format provided, expecting pod[:version][@host]" "error" 0
-        return 1
-    fi
-}
-
 STRING_IS_NUMBER()
 {
     local _SPACE_NAME="STRING_IS_NUMBER"
@@ -11488,6 +11711,31 @@ _PRJ_LOG_P()
     local logFile="${CLUSTERPATH}/${host}/pods/${pod}/log.txt"
 
     printf "%s %s %s %s\\n" "$(date +"%F %T")" "$(date +%s)" "${USER}" "${action}" >>"${logFile}"
+}
+
+_PRJ_GET_POD_RELEASE_STATE()
+{
+    local _SPACE_NAME="_PRJ_GET_POD_RELEASE_STATE"
+
+    local host="${1}"
+    shift
+
+    local pod="${1}"
+    shift
+
+    local podVersion="${1}"
+    shift
+
+    local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
+    local stateFile="pod.state"
+    local targetPodStateFile="${targetPodDir}/${stateFile}"
+
+    if [ -f "${targetPodStateFile}" ]; then
+        local state="$(cat "${targetPodStateFile}")"
+        printf "%s\\n" "${state}"
+    else
+        return 1
+    fi
 }
 
 _UTIL_GET_TAG_DIR()
@@ -11780,29 +12028,6 @@ _PRJ_IS_POD_ATTACHED()
     [ -f "${hostsPath}/${host}/pods/${pod}/log.txt" ]
 }
 
-_PRJ_GET_HOST_STATE()
-{
-    local _SPACE_NAME="_PRJ_GET_HOST_STATE"
-
-    local host="${1}"
-    shift
-
-    if ! _PRJ_DOES_HOST_EXIST "${CLUSTERPATH}" "${host}"; then
-        PRINT "Host does not exist" "error" 0
-        return 1
-    fi
-
-    local dir="${CLUSTERPATH}/${host}"
-    local file="${dir}/host.state"
-
-    local state="active"  # active is the default if no state file exists
-    if [ -f "${file}" ]; then
-        state="$(cat "${file}")"
-    fi
-
-    printf "%s\\n" "${state}"
-}
-
 _REMOTE_EXEC()
 {
     local _SPACE_NAME="_REMOTE_EXEC"
@@ -11920,7 +12145,7 @@ _REMOTE_EXEC()
                 RUN="${REMOTE_ACTION}"
             fi
             ;;
-        "daemon-log")
+        "daemon_log")
             if [ -n "${REMOTE_DAEMON_LOG}" ]; then
                 RUN="${REMOTE_DAEMON_LOG}"
             fi
@@ -12389,7 +12614,7 @@ _PRJ_GET_DAEMON_LOG2()
     fi
 
     local status=
-    _REMOTE_EXEC "${host}:${hostEnv2}" "daemon-log"
+    _REMOTE_EXEC "${host}:${hostEnv2}" "daemon_log"
     status="$?"
     if [ "${status}" -eq 0 ]; then
         return 0
@@ -12466,31 +12691,6 @@ _STRING_ESCAPE()
     eval "${1}=\${__result}"
 }
 
-_PRJ_GET_POD_RELEASE_STATE()
-{
-    local _SPACE_NAME="_PRJ_GET_POD_RELEASE_STATE"
-
-    local host="${1}"
-    shift
-
-    local pod="${1}"
-    shift
-
-    local podVersion="${1}"
-    shift
-
-    local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
-    local stateFile="pod.state"
-    local targetPodStateFile="${targetPodDir}/${stateFile}"
-
-    if [ -f "${targetPodStateFile}" ]; then
-        local state="$(cat "${targetPodStateFile}")"
-        printf "%s\\n" "${state}"
-    else
-        return 1
-    fi
-}
-
 _PRJ_GET_POD_RELEASES()
 {
     local _SPACE_NAME="_PRJ_GET_POD_RELEASES"
@@ -12501,7 +12701,7 @@ _PRJ_GET_POD_RELEASES()
     local pod="${1}"
     shift
 
-    (cd "${CLUSTERPATH}/${host}" && find . -maxdepth 5 -mindepth 5 -regex "^./pods/[^.][^/]*/release/[^.][^/]*/pod\$" |cut -d/ -f5)
+    (cd "${CLUSTERPATH}/${host}" && find . -maxdepth 5 -mindepth 5 -regex "^./pods/${pod}/release/[^.][^/]*/pod\$" |cut -d/ -f5)
 }
 
 _PRJ_SIGNAL_POD2()
