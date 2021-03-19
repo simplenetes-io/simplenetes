@@ -5,7 +5,7 @@ _info:
     title: Simplenetes 0.3
 _env:
     - CLUSTERPATH: ${CLUSTERPATH:-$PWD}
-    - PODPATH: ${PODPATH:-\$CLUSTERPATH/_pods}
+    - PODPATH: ${PODPATH:-\$CLUSTERPATH/../pods}
       # Declaring these variables here to not throw undefined errors when in space mode.
       # When exporting script for release these will be defined.
     - REMOTE_PACK_RELEASEDATA:
@@ -102,6 +102,23 @@ cluster:
                 title: Comma separated list of clusterPorts to exclude from the Ingress
             - RUN: GEN_INGRESS_CONFIG -- "${ingresspod}" "${excludeclusterports}"
 
+    registry:
+        _info:
+            title: Generate image registry login auth config.json file
+            desc: |
+                When using private image registries use this to generate docker style config.json files.
+                Podman uses the file when pulling from private registries.
+                If you already have an existing config.json file you want to use, place it in the cluster base dir
+                as registry-config.json.
+                Put lines on stdin as "registry.url:username:password"
+        _env:
+            - host:
+                title: Host name to generate for, leave blank to generate default for cluster. Set to '-' to output to stdout
+                desc: |
+                    If wanting to append to an existing config, you will need to do that manually by outputting this to stdout
+                    and editing the json file by hand injecting the snippet.
+            - RUN: REGISTRY_CONFIG -- "${host}"
+
 host:
     register:
         _info:
@@ -195,7 +212,15 @@ host:
                     values:
                         - false
                         - true
-                - RUN: HOST_SETUP -- "${host}" "${skipFirewall}" "${skipSystemd}" "${skipPodman}"
+                - strictUserKeys:
+                    values:
+                        - false
+                        - true
+                - strictSuperUserKeys:
+                    values:
+                        - false
+                        - true
+                - RUN: HOST_SETUP -- "${host}" "${strictUserKeys}" "${strictSuperUserKeys}" "${skipFirewall}" "${skipSystemd}" "${skipPodman}"
 
     init:
         _info:
@@ -304,30 +329,13 @@ host:
                 title: Set to execute commands instead of entering interactive shell
             - RUN: HOST_SHELL "${host}" "${superUser}" "${useBash}" -- ${commands}
 
-    registry:
-        _info:
-            title: Generate registry login auth config.json file
-            desc: |
-                When using private image registries use this to generate docker style config.json files.
-                Podman uses the file when pulling from private registries.
-                If you already have an existing config.json file you want to use, place it in the cluster base dir
-                as registry-config.json.
-                Put lines on stdin as "registry.url:username:password"
-        _env:
-            - host:
-                title: Host name to generate for, leave blank to generate default for cluster. Set to '-' to output to stdout
-                desc: |
-                    If wanting to append to an existing config, you will need to do that manually by outputting this to stdout
-                    and editing the json file by hand injecting the snippet.
-            - RUN: REGISTRY_CONFIG -- "${host}"
-
 pod:
     ls:
         _info:
-            title: Get state for all pod version on one or all hosts
+            title: List pods in the cluster
         _env:
             - state:
-                title: state to filter for, if any.
+                title: state to filter by, if any.
                 values:
                     - running
                     - stopped
@@ -338,10 +346,13 @@ pod:
                     - false
                     - true
             - pod:
-                title: Optional pod to get logs for, as: pod[@host]
+                title: Optional pod to filter for, as: [pod[:version]][@host]
+                desc: |
+                    Optionally provide the pod and/or host to filter by.
+                    If pod is provided without version then all versions are considered. If version is set to 'latest' then only latest releases are considered.
             - RUN: LS_POD_RELEASE_STATE -- "${state}" "${quite}" "${pod}"
 
-    compile_pod:
+    compile:
         _info:
             title: Compile the current pod version to all (or one) host(s) which it is already attached to.
             desc: |
@@ -559,7 +570,7 @@ _cmdline:
     _env:
         # Set these variable so they are assigned at runtime
         - CLUSTERPATH: \${CLUSTERPATH:-\$PWD}
-        - PODPATH: \${PODPATH:-\$CLUSTERPATH/_pods}
+        - PODPATH:
         - RUN: SNT_CMDLINE -- "\$@"
 
 _remote_plumbing:

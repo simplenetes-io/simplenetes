@@ -123,7 +123,7 @@ _REMOTE_EXEC()
                 RUN="${REMOTE_ACTION}"
             fi
             ;;
-        "daemon-log")
+        "daemon_log")
             if [ -n "${REMOTE_DAEMON_LOG}" ]; then
                 RUN="${REMOTE_DAEMON_LOG}"
             fi
@@ -480,9 +480,9 @@ _REMOTE_LOGS()
     fi
 
     if [ "${showProcessLog}" = "true" ]; then
-        ${podFile} logs -l "${limit}" -t "${timestamp}" -s "${streams}" -d "${details}" -p "$@"
+        ${podFile} logs ${limit:+-l $limit} ${timestamp:+-t $timestamp} ${streams:+-s $streams} ${details:+-d $details} -p "$@"
     else
-        ${podFile} logs -l "${limit}" -t "${timestamp}" -s "${streams}" -d "${details}" "$@"
+        ${podFile} logs ${limit:+-l $limit} ${timestamp:+-t $timestamp} ${streams:+-s $streams} ${details:+-d $details} "$@"
     fi
 }
 
@@ -490,13 +490,16 @@ _REMOTE_LOGS()
 _REMOTE_HOST_SETUP()
 {
     # Actually not optional arguments
-    SPACE_SIGNATURE="[hosthome user ports internals skipFirewall skipSystemd skipPodman]"
+    SPACE_SIGNATURE="[hosthome user superuser ports internals skipFirewall skipSystemd skipPodman]"
     SPACE_DEP="PRINT OS_INSTALL_PKG _OS_CREATE_USER FILE_ROW_REMOVE FILE_ROW_PERSIST"
 
     local hosthome="${1}"
     shift
 
     local user="${1}"
+    shift
+
+    local superuser="${1}"
     shift
 
     local ports="${1}"
@@ -519,12 +522,54 @@ _REMOTE_HOST_SETUP()
         return 1
     fi
 
-    # Create regular user
+    # Catch all pub keys coming in on stdin
+    local contents="$(cat)"
+
+    # Extract user keys and super user keys
+    local pubKeyLines=""
+    local superPubKeyLines=""
+    local stage=0
+    local ifs="${IFS}"
+    IFS="
+"
+    for line in ${contents}; do
+        if [ "${line}" = "---" ]; then
+            stage=$((stage+1))
+            continue
+        fi
+        if [ "${stage}" -eq 0 ]; then
+            pubKeyLines="${pubKeyLines}${line}
+"
+        elif [ "${stage}" -eq 1 ]; then
+            superPubKeyLines="${superPubKeyLines}${line}
+"
+        else
+            return 1
+        fi
+    done
+    IFS="${ifs}"
+
+    if [ -z "${pubKeyLines}" ] || [ -z "${superPubKeyLines}" ]; then
+        PRINT "Missing keys on stdin." "error" 0
+        return 1
+    fi
+
+    local singleKey="$(printf "%s\\" "${pubKeyLines}" | head -n1)"
+
+    # Create regular user, but we can only pass a single pub key.
     # NOTE: pub key on stdin will get written to ~/.ssh/authorized_keys
-    if ! _OS_CREATE_USER "${user}"; then
+    if ! printf "%s\\n" "${singleKey}" | _OS_CREATE_USER "${user}"; then
         PRINT "Could not create user ${user}" "error" 0
         return 1
     fi
+
+    # Now write the complete user authorized_keys file
+    local authorized_keys="/home/${user}/.ssh/authorized_keys"
+    printf "%s" "${pubKeyLines}" >"${authorized_keys}"
+
+    # Write the super user keys
+    local authorized_keys="/home/${superuser}/.ssh/authorized_keys"
+    printf "%s" "${superPubKeyLines}" >"${authorized_keys}"
 
     if [ "${skipPodman}" != "true" ]; then
         # Install podman
@@ -629,7 +674,7 @@ _REMOTE_HOST_SETUP()
         local version="Simplenetesd 0.3.0"
 
         local binaryUpdate="true"
-        local daemonFile="/usr/bin/simplenetesd"
+        local daemonFile="/bin/simplenetesd"
         if [ -f "${daemonFile}" ]; then
             # Check version
             local ver="$("${daemonFile}" -V)"
@@ -660,7 +705,7 @@ After=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root
-ExecStart=${daemonFile} -o /root/simplenetesd.log
+ExecStart=/usr/bin/env sh ${daemonFile}
 Restart=always
 KillMode=process
 

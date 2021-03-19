@@ -16,7 +16,7 @@ CLUSTER_CREATE()
 
 CLUSTER_SYNC()
 {
-    SPACE_SIGNATURE="forceSync quite"
+    SPACE_SIGNATURE="forceSync:0 quite:0"
     SPACE_DEP="_SYNC_RUN"
 
     _SYNC_RUN "$@"
@@ -117,7 +117,7 @@ REGISTRY_CONFIG()
 # Run as superuser
 HOST_SETUP()
 {
-    SPACE_SIGNATURE="host [skipFirewall skipSystemd skipPodman]"
+    SPACE_SIGNATURE="host strictUserKeys:0 strictSuperUserKeys:0 [skipFirewall skipSystemd skipPodman]"
     SPACE_DEP="_PRJ_HOST_SETUP"
 
     _PRJ_HOST_SETUP "$@"
@@ -262,7 +262,7 @@ RERUN_POD()
 POD_RELEASE_STATE()
 {
     SPACE_SIGNATURE="state podTriples"
-    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE"
+    SPACE_DEP="_PRJ_SET_POD_RELEASE_STATE _PRJ_GET_POD_RELEASE_STATES"
 
     if [ "${1}" = "" ]; then
         shift
@@ -274,7 +274,7 @@ POD_RELEASE_STATE()
 
 LS_POD_RELEASE_STATE()
 {
-    SPACE_SIGNATURE="filterState:0 quite:0 [host]"
+    SPACE_SIGNATURE="filterState:0 quite:0 [podTriple]"
     SPACE_DEP="_PRJ_LS_POD_RELEASE_STATE"
 
     _PRJ_LS_POD_RELEASE_STATE "$@"
@@ -292,7 +292,7 @@ DAEMON_LOG()
 # Connect to the cluster and retrieve logs for a pod instance.
 LOGS()
 {
-    SPACE_SIGNATURE="timestamp limit streams details showProcessLog podTriple [containers]"
+    SPACE_SIGNATURE="timestamp:0 limit:0 streams:0 details:0 showProcessLog:0 podTriple [containers]"
     SPACE_DEP="_PRJ_GET_POD_LOGS"
 
     # All options are forwarded, the first non positional argument given is expected to be the podTriple.
@@ -310,8 +310,8 @@ GEN_INGRESS_CONFIG()
 
 HOST_STATE()
 {
-    SPACE_SIGNATURE="state host"
-    SPACE_DEP="_PRJ_SET_HOST_STATE"
+    SPACE_SIGNATURE="state:0 host"
+    SPACE_DEP="_PRJ_SET_HOST_STATE _PRJ_GET_HOST_STATE"
 
     if [ "${1}" = "" ]; then
         shift
@@ -453,6 +453,21 @@ Cluster commands:
     -x, --exclude-cluster-ports=excludeClusterPorts
         Comma separated string of clusterPorts to exclude from the Ingress configuration.
 
+  cluster registry [<host>|-]
+    Generate a Docker standard config.json file from data read on stdin.
+    This file can be used by Podman on the host to authorize to private image registries.
+    This file is stored as registry-config.json either in the cluster dir or in a specific host dir if the host name is provided as argument.
+    The file is synced to the host when running 'host setup init', and stored as '~./docker/config.json'.
+    If you already have an existing Docker 'config.json' file you can place that in in
+    the cluster dir or in a host dir named as registry-config.json.
+
+    If host is set to '-' then output to stdout instead of writing to disk.
+    This can be useful when manually appending to already existing files.
+
+    stdin
+        Pass data on stdin as (multiple lines allowed):
+        registry-url:username:password\\n
+
 
 Host commands:
   host register <host>
@@ -528,6 +543,8 @@ Host commands:
     Run this command after setup superuser and disableroot.
     This command is idempotent and is safe to run multiple times.
     If the EXPOSE or INTERNAL variables in host.env are changed then this action need to be run again.
+    Public keys ('pubkeys/\*.pub') are set in the authorized_keys file on the remote host. Also the current pub key from host.env is added.
+    Public keys ('pubkeys.superuser/\*.pub') are added to the authorized_keys file on the remote host for the super user. Also the current pub key from host-superuser.env is added.
     This command cannot be run for "local" disk based hosts.
     Note that superuser must have password free access to the sudo command.
 
@@ -540,6 +557,16 @@ Host commands:
 
     --skip-podman
         Do not install and configure podman.
+
+    --strict-user-keys
+        Only allow public keys put in the host's 'pubkeys' directory to connect to the host as regular user.
+        Without this option also the current key referenced from host.env is also added.
+        Use this option to remove your own user from the authorized_keys file on the remote host.
+
+    --strict-super-user-keys
+        Only allow public keys put in the host's 'pubkeys.superuser' directory to connect to the host as the super user.
+        Without this option also the current key referenced from host-superuser.env is also added.
+        Use this option to remove your own super user from the authorized_keys file on the remote host.
 
   host init <host>
     Initialize a host to be part of the cluster by writing the cluster-id.txt file to
@@ -570,7 +597,7 @@ Host commands:
   host attach <pod@host>
     Attach a Pod to a host, this does not deploy anything nor release anything.
     Host must exist in the cluster project.
-    Pod must exist on PODPATH, unles --link is provided.
+    Pod must exist on PODPATH, unless --link is provided.
 
     -l, --link  optional git url for the pod repo.
         If set the repo is cloned into PODPATH if not already existing.
@@ -590,9 +617,11 @@ Host commands:
 
     -s, --state=active|inactive|disabled
         If option provided then set the state in the host.state file.
-        active   - has ingress, internal proxy routing and are synced.
-        inactive - no ingress, no internal proxy routing but are still synced.
-        disabled - no ingress, no internal proxy routing and not synced. Just ignored.
+        active   - has ingress, internal proxy routing and is synced.
+        inactive - no ingress, no incoming internal proxy routing but is still synced.
+                   Pods can still be attached, compiled and released, but will not get any incoming traffic.
+                   Use this to phase out a host but let it finish it's current sockets.
+        disabled - no ingress, no incoming internal proxy routing and is not synced. Just ignored.
 
   host logs <host>
     Get the simplenetes systemd daemon logs for one or all hosts.
@@ -611,26 +640,12 @@ Host commands:
         Commands are optional and will be run instead of entering the interactive shell.
         Commands must be places after any option switches and after a pair of dashes '--', so that arguments are not parsed by sns.
 
-  host registry [<host>|-]
-    Generate a Docker standard config.json file from data read on stdin.
-    This file can be used by Podman on the host to authorize to private image registries.
-    This file is stored as registry-config.json either in the cluster dir or in a specific host dir if the host name is provided as argument.
-    The file is synced to the host when running 'host setup init', and stored as '~./docker/config.json'.
-    If you already have an existing Docker 'config.json' file you can place that in in
-    the cluster dir or in a host dir named as registry-config.json.
-
-    If host is set to '-' then output to stdout instead of writing to disk.
-    This can be useful when manually appending to already existing files.
-
-    stdin
-        Pass data on stdin as (multiple lines allowed):
-        registry-url:username:password\\\n
-
 
 Pod commands:
-  pod ls [<host>]
+  pod ls [[pod[:version]][@host]]
     List pod releases in the cluster.
-    Optionally provide the host to filter by.
+    Optionally provide the pod and/or host to filter by.
+    If pod is provided without version then all versions are considered. If version is set to 'latest' then only latest releases are considered.
 
     -s, --state=running|stopped|removed|all
         Filter for pod state. Default is 'running'.
@@ -753,6 +768,7 @@ Pod commands:
     -p, --push
         If set then perform 'git push' operations after each 'git commit'.
         This can be desirable when running in a CI/CD environment and we want to resume an aborted release.
+
     -f, --force
         If set will force sync changes to cluster even if the commit chain differs.
         Use this for rollbacks, or when restoring from a branch-out.
@@ -779,7 +795,7 @@ Pod commands:
     If host is left out then delete the pod release version on all attached hosts, as long
     as they are in the 'removed' state.
     Multiple pods can be provided as arguments.
-" >&2
+"
 }
 
 VERSION()
@@ -991,8 +1007,16 @@ SNT_CMDLINE()
         fi
     fi
 
+    if [ -z "${PODPATH}" ]; then
+        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/_pods")"
+        PRINT "Setting PODPATH: ${PODPATH}" "debug" 0
+    else
+        mkdir -p "${PODPATH}"
+    fi
+
     if [ ! -d "${PODPATH}" ]; then
         PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
+        mkdir -p "${PODPATH}"
         PRINT "Setting new PODPATH: ${PODPATH}" "debug" 0
     fi
 
@@ -1054,6 +1078,18 @@ _SNT_CMDLINE()
                 return 1
             fi
             GEN_INGRESS_CONFIG "${_out_arguments}" "${_out_exclude}"
+        elif [ "${command}" = "registry" ]; then
+            local _out_arguments=
+
+            if [ "$#" -gt 1 ]; then
+                printf "Usage: sns cluster registry [<host>|-]\\n
+registry-url:username:password
+etc
+<ctrl-d>
+" >&2
+                return 1
+            fi
+            REGISTRY_CONFIG "${1:-}"
         else
             PRINT "Unknown cluster command '${command}'" "error" 0
             return 1
@@ -1100,16 +1136,18 @@ _SNT_CMDLINE()
                 fi
                 HOST_DISABLE_ROOT "${_out_arguments}"
             elif [ "${object}" = "install" ]; then
+                local _out_strictUserKeys=
+                local _out_strictSuperUserKeys=
                 local _out_skip_firewall=
                 local _out_skip_systemd=
                 local _out_skip_podman=
                 local _out_arguments=
 
-                if ! _GETOPTS "_out_skip_firewall=--skip-firewall/ _out_skip_systemd=--skip-systemd/ _out_skip_podman=--skip-podman/" 1 1 "$@"; then
-                    printf "Usage: sns host setup install <host> [--skip-firewall] [--skip-systemd] [--skip-podman]\\n" >&2
+                if ! _GETOPTS "_out_strictUserKeys=--strict-user-keys/ _out_strictSuperUserKeys=--strict-super-user-keys/ _out_skip_firewall=--skip-firewall/ _out_skip_systemd=--skip-systemd/ _out_skip_podman=--skip-podman/" 1 1 "$@"; then
+                    printf "Usage: sns host setup install <host> [--skip-firewall] [--skip-systemd] [--skip-podman] [--strict-user-keys] [--strict-super-user-keys]\\n" >&2
                     return 1
                 fi
-                HOST_SETUP "${_out_arguments}" "${_out_skip_firewall:+true}" "${_out_skip_systemd:+true}" "${_out_skip_podman:+true}"
+                HOST_SETUP "${_out_arguments}" "${_out_strictUserKeys:+false}" "${_out_strictSuperUserKeys:+false}" "${_out_skip_firewall:+true}" "${_out_skip_systemd:+true}" "${_out_skip_podman:+true}"
             else
                 PRINT "Unknown host setup object '${object}'" "error" 0
                 return 1
@@ -1180,18 +1218,6 @@ _SNT_CMDLINE()
             local host="${1}"
             shift
             HOST_SHELL "${host}" "${_out_s:+true}" "${_out_b:+true}" "$@"
-        elif [ "${command}" = "registry" ]; then
-            local _out_arguments=
-
-            if [ "$#" -gt 1 ]; then
-                printf "Usage: sns host registry [<host>|-]\\n
-registry-url:username:password
-etc
-<ctrl-d>
-" >&2
-                return 1
-            fi
-            REGISTRY_CONFIG "${1:-}"
         else
             PRINT "Unknown host command '${command}'" "error" 0
             return 1

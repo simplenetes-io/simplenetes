@@ -89,7 +89,8 @@ _RELEASE()
     # Get a list of the current running versions of the pod.
     local otherVersions="$(_PRJ_LS_POD_RELEASE_STATE "running" "true" "${pod}")"
 
-    local otherVersions2="$(printf "%s\\n" "${otherVersions}" |grep -v "\<${podVersion}\>")"
+    # Filter out the current version.
+    local otherVersions2="$(printf "%s\\n" "${otherVersions}" | grep -v ":\<${podVersion}\>")"
 
     if [ "${otherVersions2}" = "${otherVersions}" ]; then
         _PRJ_LOG_C "RELEASE ${pod}:${podVersion}"
