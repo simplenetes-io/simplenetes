@@ -2790,6 +2790,9 @@ _REMOTE_HOST_SETUP()
         PRINT \"Installed \${podmanVersion}\" \"info\" 0
 
         # Check /etc/subgid /etc/subuid
+        # Note: not sure this matters anymore since the actual file
+        # is changed later when looking at it.
+
         if ! grep -q \"^\${user}:\" \"/etc/subgid\"; then
             PRINT \"Adding user to /etc/subgid\" \"info\" 0
             printf \"%s:90000:9999\\n\" \"\${user}\" >>\"/etc/subgid\"
@@ -2894,8 +2897,11 @@ _REMOTE_HOST_SETUP()
         fi
 
         if [ \"\${binaryUpdate}\" = \"true\" ]; then
+            if ! OS_INSTALL_PKG \"curl\"; then
+                PRINT \"Could not install curl\" \"error\" 0
+            fi
             PRINT \"Downloading daemon binary\" \"info\" 0
-            if ! wget \"https://raw.githubusercontent.com/simplenetes-io/simplenetesd/\${tag}/release/simplenetesd\"; then
+            if ! curl -sLO \"https://raw.githubusercontent.com/simplenetes-io/simplenetesd/\${tag}/release/simplenetesd\"; then
                 PRINT \"Could not download the simplenetesd binary\" \"error\" 0
                 return 1
             fi
@@ -10384,7 +10390,7 @@ _PRJ_POD_INGRESS_STATE()
                 continue
             fi
 
-            local ingressConfFile=".pod.ingress.conf"
+            local ingressConfFile="pod.ingress.conf"
             local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
             local targetPodIngressConfFile="${targetPodDir}/${ingressConfFile}"
 
@@ -11951,7 +11957,7 @@ _PRJ_GET_FREE_HOSTPORT()
     local dir="${CLUSTERPATH}/${host}/pods"
 
     # Extract hostPorts and clusterPorts from the proxy config lines.
-    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
+    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=29999
     local p=
@@ -11985,7 +11991,7 @@ _PRJ_GET_FREE_CLUSTERPORT()
     local reservedPorts="${1}"
 
     # Extract clusterPorts from the proxy config lines from all pods on all hosts.
-    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
+    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=60999
     local p=
@@ -12498,9 +12504,9 @@ _PRJ_CHECK_PORT_CLASHES()
         # Get all cluster ports on host
         local dir="${CLUSTERPATH}/${host}/pods"
         # Extract clusterPorts from the proxy config lines.
-        local clusterPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
+        local clusterPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
         # Extract hostPorts from the proxy config lines.
-        local hostPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
+        local hostPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
 
         local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
 
@@ -13923,6 +13929,7 @@ _SSH_BUILD_COMMAND_HOSTFILE()
                 PRINT "JUMPHOST ${JUMPHOST} env file does not exist as: ${hostfile}" "error"
                 return 1
             fi
+            hostEnvDir="${hostfile%/*}"
             # Iterate again using JUMPHOST
         else
             break

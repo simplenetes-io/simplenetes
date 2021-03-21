@@ -1190,7 +1190,7 @@ _PRJ_SIGNAL_POD2()
     return "${status}"
 }
 
-# Get or set the .pod.ingress.conf file active/inactive
+# Get or set the pod.ingress.conf file active/inactive
 # state=active|inactive
 # Multiple podTriples can be provided
 _PRJ_POD_INGRESS_STATE()
@@ -1237,7 +1237,7 @@ _PRJ_POD_INGRESS_STATE()
                 continue
             fi
 
-            local ingressConfFile=".pod.ingress.conf"
+            local ingressConfFile="pod.ingress.conf"
             local targetPodDir="${CLUSTERPATH}/${host}/pods/${pod}/release/${podVersion}"
             local targetPodIngressConfFile="${targetPodDir}/${ingressConfFile}"
 
@@ -2631,9 +2631,9 @@ _PRJ_CHECK_PORT_CLASHES()
         # Get all cluster ports on host
         local dir="${CLUSTERPATH}/${host}/pods"
         # Extract clusterPorts from the proxy config lines.
-        local clusterPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
+        local clusterPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1 |sort)"
         # Extract hostPorts from the proxy config lines.
-        local hostPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
+        local hostPorts="$(cd "${dir}" 2>/dev/null && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f2 |sort)"
 
         local duplicateHostPorts="$(printf "%s\\n" "${hostPorts}" |uniq -d)"
 
@@ -2671,7 +2671,7 @@ _PRJ_GET_FREE_CLUSTERPORT()
     local reservedPorts="${1}"
 
     # Extract clusterPorts from the proxy config lines from all pods on all hosts.
-    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
+    local usedPorts="$(cd "${CLUSTERPATH}" && find . -regex "^./[^.][^/]*/pods/[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=60999
     local p=
@@ -2714,7 +2714,7 @@ _PRJ_GET_FREE_HOSTPORT()
     local dir="${CLUSTERPATH}/${host}/pods"
 
     # Extract hostPorts and clusterPorts from the proxy config lines.
-    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/.pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
+    local usedPorts="$(cd "${dir}" && find . -regex "^./[^.][^/]*/release/[^.][^/]*/pod.portmappings.conf\$" -exec cat {} \; |cut -d ':' -f1-2 |tr ':' '\n')"
 
     local port=29999
     local p=
