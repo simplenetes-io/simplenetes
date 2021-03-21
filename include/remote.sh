@@ -580,6 +580,9 @@ _REMOTE_HOST_SETUP()
         PRINT "Installed ${podmanVersion}" "info" 0
 
         # Check /etc/subgid /etc/subuid
+        # Note: not sure this matters anymore since the actual file
+        # is changed later when looking at it.
+
         if ! grep -q "^${user}:" "/etc/subgid"; then
             PRINT "Adding user to /etc/subgid" "info" 0
             printf "%s:90000:9999\\n" "${user}" >>"/etc/subgid"
@@ -684,8 +687,11 @@ _REMOTE_HOST_SETUP()
         fi
 
         if [ "${binaryUpdate}" = "true" ]; then
+            if ! OS_INSTALL_PKG "curl"; then
+                PRINT "Could not install curl" "error" 0
+            fi
             PRINT "Downloading daemon binary" "info" 0
-            if ! wget "https://raw.githubusercontent.com/simplenetes-io/simplenetesd/${tag}/release/simplenetesd"; then
+            if ! curl -sLO "https://raw.githubusercontent.com/simplenetes-io/simplenetesd/${tag}/release/simplenetesd"; then
                 PRINT "Could not download the simplenetesd binary" "error" 0
                 return 1
             fi
