@@ -600,6 +600,7 @@ _REMOTE_HOST_SETUP()
         FILE_ROW_PERSIST "net.ipv4.ip_unprivileged_port_start=1" "/etc/sysctl.conf"
 
         if  command -v sysctl >/dev/null 2>/dev/null; then
+            loginctl enable-linger "${user}"
             sysctl --system
         else
             PRINT "sysctl not present, the server might have to be restarted for /etc/sysctl.conf changes to be enabled." "warn" 0
@@ -674,7 +675,7 @@ _REMOTE_HOST_SETUP()
 
         # TODO: set the release tag and version
         local tag="master"
-        local version="Simplenetesd 0.3.0"
+        local version="Simplenetesd 0.4.0"
 
         local binaryUpdate="true"
         local daemonFile="/bin/simplenetesd"
@@ -698,7 +699,7 @@ _REMOTE_HOST_SETUP()
             chmod +x simplenetesd
             sudo mv simplenetesd "${daemonFile}"
         else
-            PRINT "Daemon binary exists" "info" 0
+            PRINT "Daemon binary version already exists" "info" 0
         fi
 
         # Make sure the bin is managed by systemd.

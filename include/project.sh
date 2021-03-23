@@ -259,9 +259,10 @@ _PRJ_GEN_INGRESS_CONFIG()
                     return 1
                 fi
 
-                # Check if we already done this pod:release
+                # Check if we already done this pod:release on another host,
+                # ingress and cluster ports are the same so we don't have to process it again.
                 if STRING_ITEM_INDEXOF "${doneReleases}" "${pod}:${version}"; then
-                    PRINT "Release ${version} already processed, moving on." "info" 0
+                    PRINT "Release ${version} already processed, moving on." "debug" 0
                     continue
                 fi
                 doneReleases="${doneReleases} ${pod}:${version}"
@@ -3217,8 +3218,6 @@ _PRJ_EXTRACT_INGRESS()
     shift
 
     local ingressConf="${podfile}.ingress.conf"
-    # Make into dotfile
-    ingressConf="${ingressConf%/*}/.${ingressConf##*/}"
 
     if [ ! -f "${ingressConf}" ]; then
         return
