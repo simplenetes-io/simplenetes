@@ -4,7 +4,7 @@
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_cmdline/
 # Use sns as a standalone cmd line tool
@@ -19,7 +19,7 @@ REMOTE_PACK_RELEASEDATA="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pack_release_data/
 # Simplenetes 0.3
@@ -430,7 +430,7 @@ REMOTE_SET_COMMITCHAIN="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/set_commit_chain/
 # Simplenetes 0.3
@@ -683,7 +683,7 @@ REMOTE_ACQUIRE_LOCK="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/acquire_lock/
 # Simplenetes 0.3
@@ -1035,7 +1035,7 @@ REMOTE_RELEASE_LOCK="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/release_lock/
 # Simplenetes 0.3
@@ -1344,7 +1344,7 @@ REMOTE_GET_HOSTMETADATA="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/get_host_metadata/
 # Simplenetes 0.3
@@ -1596,7 +1596,7 @@ REMOTE_UPLOAD_ARCHIVE="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/upload_archive/
 # Simplenetes 0.3
@@ -1909,7 +1909,7 @@ REMOTE_UNPACK_ARCHIVE="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/unpack_archive/
 # Simplenetes 0.3
@@ -2362,7 +2362,7 @@ REMOTE_INIT_HOST="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/init_host/
 # Simplenetes 0.3
@@ -2683,7 +2683,7 @@ REMOTE_HOST_SETUP="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/setup_host/
 # Simplenetes 0.3
@@ -3517,7 +3517,7 @@ REMOTE_LOGS="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/logs/
 # Simplenetes 0.3
@@ -3845,7 +3845,7 @@ REMOTE_DAEMON_LOG="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/daemon_log/
 # Simplenetes 0.3
@@ -3911,7 +3911,7 @@ REMOTE_CREATE_SUPERUSER="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/create_superuser/
 # Simplenetes 0.3
@@ -4390,7 +4390,7 @@ REMOTE_DISABLE_ROOT="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/disable_root/
 # Simplenetes 0.3
@@ -4702,7 +4702,7 @@ REMOTE_SIGNAL="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/signal/
 # Simplenetes 0.3
@@ -5011,7 +5011,7 @@ REMOTE_ACTION="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/action/
 # Simplenetes 0.3
@@ -5320,7 +5320,7 @@ REMOTE_POD_STATUS="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pod_status/
 # Simplenetes 0.3
@@ -5640,7 +5640,7 @@ REMOTE_POD_INFO="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pod_info/
 # Simplenetes 0.3
@@ -5949,7 +5949,7 @@ REMOTE_POD_SHELL="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pod_shell/
 # Simplenetes 0.3
@@ -6268,7 +6268,7 @@ REMOTE_HOST_SHELL="#!/usr/bin/env sh
 #    / __/ _ \/ _ |/ ___/ __/ / __/ // /
 #   _\ \/ ___/ __ / /__/ _/_ _\ \/ _  /
 #  /___/_/  /_/ |_\___/___(_)___/_//_/
-#  version: 1.4.0 | https://space.sh
+#  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/host_shell/
 # Simplenetes 0.3
