@@ -2885,7 +2885,7 @@ _REMOTE_HOST_SETUP()
 
         # TODO: set the release tag and version
         local tag=\"master\"
-        local version=\"Simplenetesd 0.4.0\"
+        local version=\"Simplenetesd 0.5.0\"
 
         local binaryUpdate=\"true\"
         local daemonFile=\"/bin/simplenetesd\"
@@ -6811,9 +6811,9 @@ Host commands:
         The list can later be modified in the host.env file and then rerun the setup firewall command.
 
     -r, --router-address=routeraddress
-        The IP:PORT of the router proxy on the host we are registering.
+        The LocalIP:PORT of the router proxy on the host we are registering.
         This address is aggregated into a list which is used internally by all the proxies in the cluster.
-        Normally it should be set to 'internalIP:32767'.
+        It should be set to 'internalIP:32767'.
         When working with a local dev-cluster with a single host set it to 'localhost:32767' or '127.0.0.1:32767'.
 
   host setup superuser <host>
@@ -9667,9 +9667,11 @@ INTERNAL=${internal}
 # HOSTHOME is the directory on the host where this local host sync to.
 HOSTHOME=${hostHome}
 
-# ROUTERADDRESS is the the IP:port within the cluster where this host's Proxy service can be reached at.
-# Most often localIP:32767.
-# These addresses will be aggregated and placed and the hosts so that the proxy can find the list.
+# ROUTERADDRESS is the the IP:port within the cluster where this host's Proxy service can be reached at and also the default interface where pod ports are bound to.
+# Format is localIP:32767.
+# These addresses will be aggregated and placed and the hosts so that the proxy pod can find the list when it is serving connections.
+# The IP address given must be the host's local IP because it is also used
+# as the default interface for exposing pod ports.
 ROUTERADDRESS=${routerAddress}" >"${dir}/host.env"
 
     # Possibly create the host-superuser.env file
@@ -13372,7 +13374,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
     PRINT "Using tmp dir ${tmpDir}" "debug"
 
     # Compare hosts.conf on host with what we have locally.
-    local hostsRouter="$(_PRJ_GET_ROUTER_HOSTS)"
+    local hostsRouter="$(_PRJ_GET_ROUTER_HOSTS "${host}")"
     local updateHosts="0"
     local item=
     for item in ${releaseData}; do
@@ -13770,8 +13772,15 @@ _PRJ_GET_ROUTER_HOSTS()
 {
     local _SPACE_NAME="_PRJ_GET_ROUTER_HOSTS"
 
+    local firstHost="${1:-}"
+
     local hosts=
     hosts="$(_PRJ_LIST_HOSTS 2)"
+
+    if [ -n "${firstHost}" ]; then
+        local newList="$(printf "%s\\n" "${hosts}" | grep -v "\<${firstHost}\>")"
+        hosts="$(printf "%s\\n%s\\n" "${firstHost}" "${newList}")"
+    fi
 
     local routerHosts=""
 

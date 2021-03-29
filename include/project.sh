@@ -2486,9 +2486,11 @@ INTERNAL=${internal}
 # HOSTHOME is the directory on the host where this local host sync to.
 HOSTHOME=${hostHome}
 
-# ROUTERADDRESS is the the IP:port within the cluster where this host's Proxy service can be reached at.
-# Most often localIP:32767.
-# These addresses will be aggregated and placed and the hosts so that the proxy can find the list.
+# ROUTERADDRESS is the the IP:port within the cluster where this host's Proxy service can be reached at and also the default interface where pod ports are bound to.
+# Format is localIP:32767.
+# These addresses will be aggregated and placed and the hosts so that the proxy pod can find the list when it is serving connections.
+# The IP address given must be the host's local IP because it is also used
+# as the default interface for exposing pod ports.
 ROUTERADDRESS=${routerAddress}" >"${dir}/host.env"
 
     # Possibly create the host-superuser.env file
@@ -3462,14 +3464,22 @@ _PRJ_EXTRACT_INGRESS()
 }
 
 # Produce a semicolon separated string of all hosts which have ROUTERADDRESS set in their host.env
+# If firstHost argument is given then always place that host's router address first in the list.
 _PRJ_GET_ROUTER_HOSTS()
 {
-    SPACE_SIGNATURE=""
+    SPACE_SIGNATURE="[firstHost]"
     SPACE_DEP="_PRJ_LIST_HOSTS STRING_TRIM"
     SPACE_ENV="CLUSTERPATH"
 
+    local firstHost="${1:-}"
+
     local hosts=
     hosts="$(_PRJ_LIST_HOSTS 2)"
+
+    if [ -n "${firstHost}" ]; then
+        local newList="$(printf "%s\\n" "${hosts}" | grep -v "\<${firstHost}\>")"
+        hosts="$(printf "%s\\n%s\\n" "${firstHost}" "${newList}")"
+    fi
 
     local routerHosts=""
 

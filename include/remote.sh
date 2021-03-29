@@ -675,7 +675,7 @@ _REMOTE_HOST_SETUP()
 
         # TODO: set the release tag and version
         local tag="master"
-        local version="Simplenetesd 0.4.0"
+        local version="Simplenetesd 0.5.0"
 
         local binaryUpdate="true"
         local daemonFile="/bin/simplenetesd"

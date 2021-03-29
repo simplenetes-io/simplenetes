@@ -520,9 +520,9 @@ Host commands:
         The list can later be modified in the host.env file and then rerun the setup firewall command.
 
     -r, --router-address=routeraddress
-        The IP:PORT of the router proxy on the host we are registering.
+        The LocalIP:PORT of the router proxy on the host we are registering.
         This address is aggregated into a list which is used internally by all the proxies in the cluster.
-        Normally it should be set to 'internalIP:32767'.
+        It should be set to 'internalIP:32767'.
         When working with a local dev-cluster with a single host set it to 'localhost:32767' or '127.0.0.1:32767'.
 
   host setup superuser <host>

@@ -811,7 +811,7 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
     PRINT "Using tmp dir ${tmpDir}" "debug"
 
     # Compare hosts.conf on host with what we have locally.
-    local hostsRouter="$(_PRJ_GET_ROUTER_HOSTS)"
+    local hostsRouter="$(_PRJ_GET_ROUTER_HOSTS "${host}")"
     local updateHosts="0"
     local item=
     for item in ${releaseData}; do
