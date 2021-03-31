@@ -24,7 +24,7 @@ It interacts with a few programs in the OS, such as `grep`, `awk`, `date` and ot
 
 Install straight from GitHub, as:  
 ```sh
-wget https://raw.githubusercontent.com/simplenetes-io/simplenetes/0.3.1/release/sns
+wget https://raw.githubusercontent.com/simplenetes-io/simplenetes/0.3.2/release/sns
 chmod +x sns
 sudo mv sns /usr/local/bin
 ```

@@ -106,6 +106,7 @@ sns host init loadbalancer1
 ### Worker1
 
 ```sh
+# Note, we do not publically expose any ports on worker hosts.
 sns host register worker1 --address=<PrivIP-Worker1> --jump-host="../backdoor" --router-address=<PrivIP-Worker1:32767>
 
 # If you were provided an already existing superuser you can skip the following two steps
@@ -137,12 +138,41 @@ sns host shell <host> [--super-user]
 ## 5. Adding pods
 We'll show here how to add some initial pods to get the cluster up and running. See the DEVCLUSTER instructions for details on this.
 
+Attach pods:  
+
 ```sh
 cd prod-cluster
 sns host attach ingress@loadbalancer1 --link=https://github.com/simplenetes-io/ingress
 sns host attach proxy@loadbalancer1 --link=https://github.com/simplenetes-io/proxy
 sns host attach proxy@worker1 --link=https://github.com/simplenetes-io/proxy
-sns host attach simplenetes_io@worker1 --link=https://github.com/simplenetes-io/simplenetes_io.git
 sns host attach letsencrypt@worker1 --link=https://github.com/simplenetes-io/letsencrypt.git
+sns host attach simplenetes_io@worker1 --link=https://github.com/simplenetes-io/simplenetes_io.git
+```
 
+Configure the cluster:  
+```sh
+cd prod-cluster
+
+# Allow HTTP ingress traffic for the simplenetes_io pod.
+echo "simplenetes_io_allowHttp=true" >>cluster-vars.env
+```
+
+Compile all pods:  
+```sh
+sns pod compile simplenetes_io
+sns pod compile proxy
+sns pod compile letsencrypt
+sns pod compile ingress
+```
+
+Generate ingress:  
+```sh
+sns cluster geningress
+sns pod updateconfig ingress
+```
+
+Sync the cluster:  
+```sh
+git add . && git commit -m "Initial"
+sns cluster sync
 ```
