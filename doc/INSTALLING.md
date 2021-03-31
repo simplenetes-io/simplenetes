@@ -2,16 +2,21 @@
 
 There are three main components of Simplenetes which need to be installed:
 
-    1.  The Management Tool, called `snt`
+    1.  The Management Tool, called `sns`
     2.  The Pod compiler, called `podc`
-    3.  The Daemon, called `sntd`
+    3.  The Daemon, called `simplenetesd`
 
-To manage a cluster, at least the `snt` tool needs to be installed.  
+To manage a cluster, at least the `snt` tool needs to be installed on your laptop.  
 If managing the cluster also means compiling pods to create new releases then also `podc` needs to be installed.  
-The Daemon `(sntd)` should always installed on all hosts in your cluster. It can also be installed locally on your laptop to simulate working on a cluster.
+The Daemon `(simplenetesd)` should always installed on all hosts in your cluster. It can also be installed locally on your laptop to simulate working on a cluster.
 
 ## Prerequisites
-To run pods you will need `podman version>=1.8.1` installed and `slirp4netns` to run pods as rootless. To install Podman and slirp4netns please refer to your distributions package manager.  
+To run pods locally you will need `podman version>=1.8.1` installed and `slirp4netns` to run pods as rootless. To install Podman and slirp4netns please refer to your distributions package manager, it's usually not more complicated than `sudo pacman -S podman`.
+
+Since Podman being root-less we want to allow non-root users to bind ports from 80 and upwards.
+This row should be put into 1/etc/sysctl.conf`:  
+`net.ipv4.ip_unprivileged_port_start=80`
+
 
 ## Installing `snt`
 `snt` is a standalone executable, written in Posix complaint shell script and will run anywhere there is Bash/Dash/Ash installed.  
@@ -19,35 +24,16 @@ It interacts with a few programs in the OS, such as `grep`, `awk`, `date` and ot
 
 Install straight from GitHub, as:  
 ```sh
-# TODO
-wget github.com/simpletenes/snt/release/snt
-chmod +x snt
-sudo mv snt /usr/local/bin
+wget https://raw.githubusercontent.com/simplenetes-io/simplenetes/0.3.1/release/sns
+chmod +x sns
+sudo mv sns /usr/local/bin
 ```
 
 ## Installing `podc`
-`podc` is also a standalone executable, written in Bash and will run anywhere Bash is installed.  
-The reason `podc` is written in Bash and not Posix shell is that it has a built in YAML parser which requires the more feature rich Bash to run.  
-Even though `podc` it self is a standalone executable it requires a runtime template file for generating pod scripts. This file must also be accessible on the system.  
-`podc` will look for the `podman-runtime` template file first in the same directory as it self (`./`), then in `./release` and finally in `/opt/podc`.  
-The reason for that it looks in `./release` is because it makes developing the pod compiler easier.  
+See [https://github.com/simplenetes-io/podc/blob/master/README.md#install](https://github.com/simplenetes-io/podc/blob/master/README.md#install).
 
-In our case we will install the `podman-runtime` file into `/opt/podc`.
 
-Install straight from GitHub, as:  
-```sh
-# TODO
-wget github.com/simpletenes/podc/release/podc
-chmod +x podc
-sudo mv podc /usr/local/bin
-
-# TODO
-wget github.com/simpletenes/podc/release/podman-runtime
-sudo mkdir -p /opt/podc
-sudo mv podman-runtime /opt/podc
-```
-
-## Installing `sntd`
+## Installing `simplenetesd`
 `sntd` is a standalone executable, written in Posix complaint shell script and will run anywhere there is Bash/Dash/Ash installed.  
 The Daemon should always be installed onto the GNU/BusyBox/Linux Virtual Machines making up the cluster.  
 
@@ -56,12 +42,13 @@ When installing it locally it does not have to be installed as a Daemon, but can
 
 The Daemon activates the pod scripts which uses `podman` to run containers.
 
-To provision new hosts and clusters, and to install `sntd` on a server please see [PROVISIONING.md](PROVISIONING.md).  
+To provision new hosts and clusters, and to install `simplenetesd` on a server please see [PROVISIONING.md](PROVISIONING.md).  
 
-To install `sntd` locally to use it for development, do:
+To install `simplenetesd` locally to use it for development, do:
 ```sh
-# TODO
-wget https://github.com/simpletenes/sntd/releases/tag/1.0.0
-chmod +x sntd
-sudo mv sntd /usr/local/bin
+wget https://raw.githubusercontent.com/simplenetes-io/simplenetesd/0.6.1/release/simplenetesd
+chmod +x simplenetesd
+sudo mv simplenetesd /usr/local/bin
 ```
+
+Note that the version "0.6.1" might be old when reading this.

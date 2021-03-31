@@ -5,7 +5,7 @@ A. This is because we opted for a super robust low config proxy with few moving 
    This ranges can be configured to be lower if needed, say between 61000 and 63999 (which are the range for auto assigned of cluster ports). Which would then only use about 20 MB of extra memory.
 
 Q. Can I change the cluster-id.txt file in my project?
-A. You can. Then you will need to run `snt init-host -f` on every host in the cluster.
+A. You can. Then you will need to run `sns host init <host> -f` on every host in the cluster.
 
 Q. Can two clusters have the same ID?
 A. Yes, but avoid it. The cluster ID is a safety precaution to prevent operating on the wrong hosts by mistake.
@@ -19,12 +19,12 @@ Q. What are the variables and which can I manualy change in the `host.env` file?
    KEYFILE - path to the SSH keyfile
    JUMPHOST - if needed to jump via a host to reach the target host. This is the name of another host in your cluster.
    HOSTHOME - directory on host where to we sync files. Don't change this.
-   EXPOSE - space separated list of port numbers to expose to the public internet. If not using JUMPHOST YOU MUST HAVE 22 (SSH port) SET. If changed run "snt setup-host" again.
-   INTERNAL - space separated list of networks treated as internal networks in the cluster. Important so that hosts can talk internally. If changed run "snt setup-host" again.
-   ROUTERADDRESS - InternalIP:port where other hosts can connect to to reach the proxy pod running on the host. Leave blank if no proxy pod is running on the host. If changed it will get propagated on the next "snt sync".
+   EXPOSE - space separated list of port numbers to expose to the public internet. If not using JUMPHOST YOU MUST HAVE 22 (SSH port) SET. If changed run "sns host setup" again.
+   INTERNAL - space separated list of networks treated as internal networks in the cluster. Important so that hosts can talk internally. If changed run "sns host setup" again.
+   ROUTERADDRESS - InternalIP:port where other hosts can connect to to reach the proxy pod running on the host. Leave blank if no proxy pod is running on the host. If changed it will get propagated on the next "sns cluster sync".
 
 Q. Can I change the HOSTHOME variable on the `host.env` file?
-A. Not a good idea. You would first need to put all pods on the host to 'removed' state, sync the changes, then change the HOSTHOME, run `snt init-host -f`, then resync the cluster. You should also remove the old HOSTHOME dir on the host.
+A. Not a good idea. You would first need to put all pods on the host to 'removed' state, sync the changes, then change the HOSTHOME, run `sns host init -f`, then resync the cluster. You should also remove the old HOSTHOME dir on the host.
    You could after removing all pods instead move the old HOSTNAME to the new HOSTHOME, to preserve logs.
 
 Q. What are the different hosts states?

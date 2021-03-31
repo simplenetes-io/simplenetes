@@ -4,10 +4,10 @@ A Pod is described in a _YAML_ file and is compiled into a single executable, wh
 
 In this HOWTO we will create our first pods and see how easy it is to manage their lifecycles using the standalone executable.
 
-We will learn all there is to know about pods.
+This is a crash course on how to work with pods, see [https://github.com/simplenetes-io/podc/tree/master/examples](https://github.com/simplenetes-io/podc/tree/master/examples) to learn all about pods.
 
 ## Installing
-See [INSTALLING.md](INSTALLING.md) for instructions on installing the pod compiler `podc` and Podman.
+See [INSTALLING.md](INSTALLING.md) for instructions on installing the pod compiler `podc` and `podman`.
 
 ## Create a website pod
 A very common scenario is to create a website. Let's do that.
@@ -20,10 +20,11 @@ Cop the below _YAML_ and put it in a file called `pod.yaml`.
 ```sh
 mkdir mypod1
 cd mypod1
+
 cat >pod.yaml <<EOF
-apiVersion: 1.0.0-beta1
+api: 1.0.0-beta1
 podVersion: 0.0.1
-podRuntime: podman
+runtime: podman
 containers:
     - name: webserver
       image: nginx:1.16.1-alpine
@@ -31,6 +32,7 @@ containers:
           - targetPort: 80
             hostPort: 8181
 EOF
+
 podc
 ./pod run
 ./pod status
@@ -50,7 +52,7 @@ However, we want to see how to develop an application living inside a pod, that'
 
 We will see how to create a pod which we also want to work with in development mode when developing our application locally.
 
-When developing a website, one can use many different backend and build technologies, be it nginx, hugo, expressjs, jekyll, etc.
+When developing a website, one can use many different backend servers and build technologies, be it nginx, hugo, expressjs, jekyll, Make, webpack, etc.
 
 It is often the case that developers run their projects without using containers when in development mode, but when using Simplenetes it is very straight forward to always run in containers. In this way development resembles production environment much better.
 
@@ -61,9 +63,9 @@ This is our pod YAML. Copy it and save it as `pod.yaml` (detailed instructions b
 
 `pod.yaml`:  
 ```yaml
-apiVersion: 1.0.0-beta1
+api: 1.0.0-beta1
 podVersion: 0.0.1
-podRuntime: podman
+runtime: podman
 
 #ifdef ${DEVMODE}
 volumes:
@@ -97,7 +99,7 @@ containers:
             hostPort: 8080
 ```
 
-Save this as `pod.env`:  
+Save the following as file `pod.env` alongside the `pod.yaml` file:  
 ```sh
 DEVMODE=true
 ```
@@ -105,12 +107,13 @@ DEVMODE=true
 The blocks inside the _YAML_ between `#iftrue ${DEVMODE} / #endif` will only be present when `DEVMODE=true` in the `pod.env` file. The reverse is of course true for the _if not true_ `#ifntrue` directive.  
 
 Using these simple preprocessor directives we can easily switch our pod between dev and production mode.  
-When attaching a pod to a cluster project and compiling it, this local `pod.env` file is ignored (values are instead read from a cluster-wide `.env` file) so there is no need in changing the `DEVMODE` value from `true` to `false` in the `pod.env` file.
+When attaching a pod to a cluster project and compiling it targeting the cluster, this local `pod.env` file is ignored and values are instead read from a cluster-wide `.env` file, so there is no need in changing the `DEVMODE` value from `true` to `false` in the `pod.env` file.
 
-Create a pod dir a `pod.yaml` and a `pod.env` file:  
+Create a pod directory, a `pod.yaml` and a `pod.env` file as:  
 ```sh
 mkdir mypod2
 cd mypod2
+
 cat >pod.yaml
 <ctrl-v to paste the YAML you copied from above, hit enter>
 <ctrl-d>
@@ -124,7 +127,9 @@ The generation of the nginx content files are at the discretion of the website p
 
 Create these two files in `./build/ and `./build/public`, respectively:  
 
-```./build/nginx.conf
+Save as file `./build/nginx.conf`:  
+
+```nginx.conf
 user  nginx;
 worker_processes  auto;
 
@@ -167,15 +172,19 @@ http {
 }
 ```
 
-```./build/public/index.html
+Save as file `./build/public/index.html`:  
+```
 Hello world!
 ```
+
+Detailed instructions how to save the files:  
 
 ```sh
 mkdir -p build/public
 cat >./build/nginx.conf
 <ctrl-v to paste the nginx.conf you copied from above, hit enter>
 <ctrl-d>
+
 cat >./build/public/index.html
 <ctrl-v to paste the index.html you copied from above, hit enter>
 <ctrl-d>
@@ -246,13 +255,13 @@ mkdir mypod3
 cd mypod3
 ```
 
-Create the following files inside the directory.
+Create the following files inside the directory. It is the same as above, but with some added preprocessing directives and cluster port configurations.
 
 `pod.yaml`:  
 ```yaml
-apiVersion: 1.0.0-beta1
+api: 1.0.0-beta1
 podVersion: 0.0.1
-podRuntime: podman
+runtime: podman
 
 #ifdef ${DEVMODE}
 volumes:
@@ -306,6 +315,8 @@ FROM nginx:1.16.1-alpine
 COPY ./build
 
 ```
+
+With this setup you can have a pod working for local development but also which can be released properly into a cluster.
 
 Your build process should aim at building a docker image which is tagged and pushed properly, then the `pod.yaml` `image` value needs to be set to that new image version.
 
