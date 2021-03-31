@@ -800,7 +800,7 @@ Pod commands:
 
 VERSION()
 {
-    printf "%s\\n" "Simplenetes 0.3.0"
+    printf "%s\\n" "Simplenetes 0.3.1"
 }
 
 # options are on the format:

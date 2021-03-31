@@ -2883,9 +2883,8 @@ _REMOTE_HOST_SETUP()
         # Download the simplenetes daemon.
         # Check if the version changed, in such case overwrite it, overwrite the unit file and re-start the service.
 
-        # TODO: set the release tag and version
-        local tag=\"master\"
-        local version=\"Simplenetesd 0.5.0\"
+        local tag=\"0.6.1\"
+        local version=\"Simplenetesd 0.6.1\"
 
         local binaryUpdate=\"true\"
         local daemonFile=\"/bin/simplenetesd\"
@@ -7092,7 +7091,7 @@ Pod commands:
 VERSION()
 {
     local _SPACE_NAME="VERSION"
-    printf "%s\\n" "Simplenetes 0.3.0"
+    printf "%s\\n" "Simplenetes 0.3.1"
 }
 
 _SNT_CMDLINE()
@@ -8887,7 +8886,7 @@ _PRJ_COMPILE_POD()
 
         # Copy configs into release
         if [ -d "${CLUSTERPATH}/_config/${pod}" ]; then
-            PRINT "Copying pod configs from cluster repo into new pod release when compiling. Note that new/changed configs from the pod repo are not automatically updated into the cluster repo. Run \"sns import-config\" to import from pod repo to cluster repo, then \"sns update-config\" to copy those into an existing pod release." "info" 0
+            PRINT "Copying pod configs from cluster repo into new pod release when compiling. Note that new/changed configs from the pod repo are not automatically updated into the cluster repo. Run \"sns import-config\" to import from pod repo to cluster repo, then \"sns pod updateconfig\" to copy those into an existing pod release." "info" 0
             if ! _PRJ_COPY_POD_CONFIGS "${CLUSTERPATH}" "${host}" "${pod}" "${podVersion}"; then
                 status=1
                 break
@@ -9744,7 +9743,7 @@ _PRJ_CLUSTER_IMPORT_POD_CFG()
         return 1
     fi
 
-    PRINT "Configs copied. New pod releases will get these new configs when compiled. To update configs of an existing pod release run \"sns update-config\"" "info" 0
+    PRINT "Configs copied. New pod releases will get these new configs when compiled. To update configs of an existing pod release run \"sns pod updateconfig\"" "info" 0
 
     _PRJ_LOG_C "IMPORT_POD_CFG ${pod}:${configCommit}"
 }
