@@ -1950,7 +1950,8 @@ _SYNC_REMOTE_UNPACK_ARCHIVE()
 
     PRINT \"Unpack archive on host to \${HOSTHOME}\" \"info\" 0
 
-    if ! tar xzf \"\${archive}\" -C \"\${tmpDir}\"; then
+    # TODO: --warning=no-timestamp will not work with busybox tar
+    if ! tar xzf \"\${archive}\" --warning=no-timestamp -C \"\${tmpDir}\"; then
         PRINT \"Could not unpack archive.\" \"error\" 0
         return 1
     fi
@@ -6731,6 +6732,11 @@ Cluster commands:
     -q, --quite
         Set to be quite.
 
+    --pod-to-overwrite=pod:version
+        This is a special rescue option used to overwrite an existing release with new files.
+        First delete the pod:version, then compile it and sync with this option set.
+        After the update the pod needs to be rerun for changes to take place.
+
   cluster importconfig <pod>
     Import config templates from the pod source repo into the cluster project.
 
@@ -7121,11 +7127,12 @@ _SNT_CMDLINE()
         elif [ "${command}" = "sync" ]; then
             local _out_force=
             local _out_quite=
-            if ! _GETOPTS "_out_force=-f,--force/ _out_quite=-q,--quite/" 0 0 "$@"; then
-                printf "Usage: sns cluster sync [-f|--force] [-q|--quite]\\n" >&2
+            local _out_pod_to_overwrite=
+            if ! _GETOPTS "_out_force=-f,--force/ _out_quite=-q,--quite/ _out_pod_to_overwrite=--pod-to-overwrite/*" 0 0 "$@"; then
+                printf "Usage: sns cluster sync [-f|--force] [-q|--quite] [--pod-to-overwrite=pod:version]\\n" >&2
                 return 1
             fi
-            CLUSTER_SYNC "${_out_force:+true}" "${_out_quite:+true}"
+            CLUSTER_SYNC "${_out_force:+true}" "${_out_quite:+true}" "${_out_pod_to_overwrite}"
         elif [ "${command}" = "importconfig" ]; then
             local _out_arguments=
             if ! _GETOPTS "" 1 1 "$@"; then
@@ -8886,7 +8893,7 @@ _PRJ_COMPILE_POD()
 
         # Copy configs into release
         if [ -d "${CLUSTERPATH}/_config/${pod}" ]; then
-            PRINT "Copying pod configs from cluster repo into new pod release when compiling. Note that new/changed configs from the pod repo are not automatically updated into the cluster repo. Run \"sns import-config\" to import from pod repo to cluster repo, then \"sns pod updateconfig\" to copy those into an existing pod release." "info" 0
+            PRINT "Copying pod configs from cluster repo into new pod release when compiling. Note that new/changed configs from the pod repo are not automatically updated into the cluster repo. Run \"sns cluster importconfig\" to import from pod repo to cluster repo, then \"sns pod updateconfig\" to copy those into an existing pod release." "info" 0
             if ! _PRJ_COPY_POD_CONFIGS "${CLUSTERPATH}" "${host}" "${pod}" "${podVersion}"; then
                 status=1
                 break
@@ -9821,6 +9828,8 @@ _SYNC_RUN()
     local quite="${1:-false}"
     shift
 
+    local podToOverwrite="${1:-}"
+
     if ! _PRJ_CHECK_PORT_CLASHES; then
         return 1
     fi
@@ -10031,7 +10040,7 @@ _SYNC_RUN()
     for tuple in ${list}; do
         host="${tuple%:*}"
         tmpFile="${tuple#*:}"
-        if ! pid="$(_SYNC_RUN2 "${host}" "${gitCommitChain}" "${tmpFile}")"; then
+        if ! pid="$(_SYNC_RUN2 "${host}" "${gitCommitChain}" "${tmpFile}" "${podToOverwrite}")"; then
             PRINT "Could not spawn process, aborting. Sync might now be in a halfway state, you should rerun this sync when possible." "error" 0
             # Make it kill any processes immediately.
             timeout=0
@@ -12336,6 +12345,8 @@ _SYNC_RUN2()
     local tmpFile="${1}"
     shift
 
+    local podToOverwrite="${1:-}"
+
     local pid=
 
     # Spawn off subprocess
@@ -12356,7 +12367,7 @@ _SYNC_RUN2()
 
         local status=
         local tmpDir=
-        tmpDir="$(_SYNC_BUILD_UPDATE_ARCHIVE "${host}" "${hostReleaseData}")"
+        tmpDir="$(_SYNC_BUILD_UPDATE_ARCHIVE "${host}" "${hostReleaseData}" "${podToOverwrite}")"
         status="$?"
         if [ "${status}" -eq 0 ]; then
             PRINT "Performing updates..." "info" 0
@@ -13363,6 +13374,8 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
     local releaseData="${1}"
     shift
 
+    local podToOverwrite="${1:-}"
+
     local tmpDir=
     if ! tmpDir="$(_UTIL_GET_TMP_DIR)"; then
         return 1
@@ -13527,8 +13540,16 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
                         if [ "${pod}" = "${pod2}" ] && [ "${release}" = "${release2}" ]; then
                             # This release is already present on host, don't add it.
                             # If there was any state change that would have been handled in the logic first phase logic.
-                            copy="0"
-                            break
+                            # However, check if we are to overwrite it. This is a special case.
+                            # There are rare circumstances when the user might not be able to
+                            # bump the pod version but needs it recompiled and released.
+                            if [ "${pod}:${release}" = "${podToOverwrite}" ]; then
+                                # Overwrite this particular pod:version
+                                :
+                            else
+                                copy="0"
+                                break
+                            fi
                         fi
                     done
                 fi
