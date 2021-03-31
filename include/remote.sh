@@ -673,9 +673,8 @@ _REMOTE_HOST_SETUP()
         # Download the simplenetes daemon.
         # Check if the version changed, in such case overwrite it, overwrite the unit file and re-start the service.
 
-        # TODO: set the release tag and version
-        local tag="master"
-        local version="Simplenetesd 0.5.0"
+        local tag="0.6.1"
+        local version="Simplenetesd 0.6.1"
 
         local binaryUpdate="true"
         local daemonFile="/bin/simplenetesd"
