@@ -4,25 +4,27 @@ Welcome to _Simplenetes_! Let's put the Dev and Ops back into DevOps.
 
 Simplenetes compared to Kubernetes:
 
-    - Simplenetes has 10k lines of code, Kubernetes has 3M lines of code
+    - Simplenetes has a 100x less code than Kubernetes.
     - Simplenetes has less moving parts
-        - no etcd
-        - no iptables
-        - root-less containers
-        - your cluster is also your git repo so you can see it on disk
-        - everything is managed via SSH
-        - no magic involved
-        - very GitOps
+        - No etcd
+        - No iptables
+        - Root-less containers
+        - Your cluster is also your git repo so you can see it on disk
+        - Everything is managed via SSH
+        - No magic involved
+        - Very GitOps
     - Simplenetes also supports:
-        - multiple replicas of pods
-        - overlapping versions of pods
-        - controlled rollout and rollback of pods
-        - loadbalancers
-        - internal proxying of traffic
+        - Multiple replicas of pods
+        - Overlapping versions of pods
+        - Controlled rollout and rollback of pods
+        - Loadbalancers
+        - Internal proxying of traffic
         - CI/CD pipelines
         - Letsencrypt certificates
-    - Simplenetes makes it very smooth to work with pods in development mode
+        - Health checks
+    - Simplenetes makes it really smooth to work with pods and micro services in development mode on you laptop (spoiler: no VMs needed)
     - Simplenetes uses `podman` as container runtime
+
 
 In short: Simplenetes takes the raisins out of the cake, but it does not have everything Kubernetes offers.
 
