@@ -1682,7 +1682,7 @@ _PRJ_COMPILE_POD()
 
         # Copy configs into release
         if [ -d "${CLUSTERPATH}/_config/${pod}" ]; then
-            PRINT "Copying pod configs from cluster repo into new pod release when compiling. Note that new/changed configs from the pod repo are not automatically updated into the cluster repo. Run \"sns import-config\" to import from pod repo to cluster repo, then \"sns pod updateconfig\" to copy those into an existing pod release." "info" 0
+            PRINT "Copying pod configs from cluster repo into new pod release when compiling. Note that new/changed configs from the pod repo are not automatically updated into the cluster repo. Run \"sns cluster importconfig\" to import from pod repo to cluster repo, then \"sns pod updateconfig\" to copy those into an existing pod release." "info" 0
             if ! _PRJ_COPY_POD_CONFIGS "${CLUSTERPATH}" "${host}" "${pod}" "${podVersion}"; then
                 status=1
                 break

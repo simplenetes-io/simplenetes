@@ -16,7 +16,7 @@ CLUSTER_CREATE()
 
 CLUSTER_SYNC()
 {
-    SPACE_SIGNATURE="forceSync:0 quite:0"
+    SPACE_SIGNATURE="forceSync:0 quite:0 [podToOverwrite]"
     SPACE_DEP="_SYNC_RUN"
 
     _SYNC_RUN "$@"
@@ -440,6 +440,11 @@ Cluster commands:
 
     -q, --quite
         Set to be quite.
+
+    --pod-to-overwrite=pod:version
+        This is a special rescue option used to overwrite an existing release with new files.
+        First delete the pod:version, then compile it and sync with this option set.
+        After the update the pod needs to be rerun for changes to take place.
 
   cluster importconfig <pod>
     Import config templates from the pod source repo into the cluster project.
@@ -1058,11 +1063,12 @@ _SNT_CMDLINE()
         elif [ "${command}" = "sync" ]; then
             local _out_force=
             local _out_quite=
-            if ! _GETOPTS "_out_force=-f,--force/ _out_quite=-q,--quite/" 0 0 "$@"; then
-                printf "Usage: sns cluster sync [-f|--force] [-q|--quite]\\n" >&2
+            local _out_pod_to_overwrite=
+            if ! _GETOPTS "_out_force=-f,--force/ _out_quite=-q,--quite/ _out_pod_to_overwrite=--pod-to-overwrite/*" 0 0 "$@"; then
+                printf "Usage: sns cluster sync [-f|--force] [-q|--quite] [--pod-to-overwrite=pod:version]\\n" >&2
                 return 1
             fi
-            CLUSTER_SYNC "${_out_force:+true}" "${_out_quite:+true}"
+            CLUSTER_SYNC "${_out_force:+true}" "${_out_quite:+true}" "${_out_pod_to_overwrite}"
         elif [ "${command}" = "importconfig" ]; then
             local _out_arguments=
             if ! _GETOPTS "" 1 1 "$@"; then

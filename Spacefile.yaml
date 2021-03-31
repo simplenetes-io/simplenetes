@@ -72,7 +72,13 @@ cluster:
                 values:
                     - true
                     - false
-            - RUN: CLUSTER_SYNC -- "${forceSync}" "${quite}"
+            - podToOverWrite:
+                title: Set to pod:version to overwrite its files on sync.
+                desc: |
+                    This is a special rescue option used to overwrite an existing release with new files.
+                    First delete the pod:version, then compile it and sync with this option set.
+                    After the update the pod needs to be rerun for changes to take place.
+            - RUN: CLUSTER_SYNC "${forceSync}" "${quite}" "${podToOverWrite}"
     importconfig:
         _info:
             title: Import config templates from pod repo into the cluster project

@@ -2,7 +2,7 @@
 #
 _SYNC_RUN()
 {
-    SPACE_SIGNATURE="forceSync quite"
+    SPACE_SIGNATURE="forceSync quite [podToOverwrite] "
     SPACE_ENV="CLUSTERPATH"
     SPACE_DEP="PRINT _PRJ_IS_CLUSTER_CLEAN _PRJ_GET_CLUSTER_GIT_COMMIT_CHAIN _PRJ_GET_CLUSTER_ID _SYNC_GET_METADATA _SYNC_RUN2 _SYNC_OUTPUT_INFO _SYNC_ACQUIRE_LOCK _PRJ_LOG_C _PRJ_LIST_HOSTS _SYNC_MK_TMP_FILES _SYNC_RM_TMP_FILES _PRJ_CHECK_PORT_CLASHES _SYNC_RELEASE_LOCKS _UTIL_WAIT_PROCESSES"
 
@@ -31,6 +31,8 @@ _SYNC_RUN()
 
     local quite="${1:-false}"
     shift
+
+    local podToOverwrite="${1:-}"
 
     if ! _PRJ_CHECK_PORT_CLASHES; then
         return 1
@@ -242,7 +244,7 @@ _SYNC_RUN()
     for tuple in ${list}; do
         host="${tuple%:*}"
         tmpFile="${tuple#*:}"
-        if ! pid="$(_SYNC_RUN2 "${host}" "${gitCommitChain}" "${tmpFile}")"; then
+        if ! pid="$(_SYNC_RUN2 "${host}" "${gitCommitChain}" "${tmpFile}" "${podToOverwrite}")"; then
             PRINT "Could not spawn process, aborting. Sync might now be in a halfway state, you should rerun this sync when possible." "error" 0
             # Make it kill any processes immediately.
             timeout=0
@@ -444,7 +446,7 @@ _SYNC_OUTPUT_INFO()
 # We assume we are holding the lock on the host already.
 _SYNC_RUN2()
 {
-    SPACE_SIGNATURE="host gitcommitchain tmpFile"
+    SPACE_SIGNATURE="host gitcommitchain tmpFile [podToOverwrite]"
     SPACE_DEP="_SYNC_SET_CHAIN _SYNC_DOWNLOAD_RELEASE_DATA _SYNC_BUILD_UPDATE_ARCHIVE _SYNC_PERFORM_UPDATES"
 
     local host="${host}"
@@ -455,6 +457,8 @@ _SYNC_RUN2()
 
     local tmpFile="${1}"
     shift
+
+    local podToOverwrite="${1:-}"
 
     local pid=
 
@@ -476,7 +480,7 @@ _SYNC_RUN2()
 
         local status=
         local tmpDir=
-        tmpDir="$(_SYNC_BUILD_UPDATE_ARCHIVE "${host}" "${hostReleaseData}")"
+        tmpDir="$(_SYNC_BUILD_UPDATE_ARCHIVE "${host}" "${hostReleaseData}" "${podToOverwrite}")"
         status="$?"
         if [ "${status}" -eq 0 ]; then
             PRINT "Performing updates..." "info" 0
@@ -791,7 +795,7 @@ _SYNC_REMOTE_PACK_RELEASE_DATA()
 # stdout: path to tmp dir with all files to sync to host
 _SYNC_BUILD_UPDATE_ARCHIVE()
 {
-    SPACE_SIGNATURE="host hostreleasedata"
+    SPACE_SIGNATURE="host hostreleasedata [podToOverwrite]"
     SPACE_DEP="_UTIL_GET_TMP_DIR PRINT _PRJ_GET_ROUTER_HOSTS STRING_SUBST _PRJ_GET_HOST_STATE"
     SPACE_ENV="CLUSTERPATH"
 
@@ -800,6 +804,8 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
 
     local releaseData="${1}"
     shift
+
+    local podToOverwrite="${1:-}"
 
     local tmpDir=
     if ! tmpDir="$(_UTIL_GET_TMP_DIR)"; then
@@ -965,8 +971,16 @@ _SYNC_BUILD_UPDATE_ARCHIVE()
                         if [ "${pod}" = "${pod2}" ] && [ "${release}" = "${release2}" ]; then
                             # This release is already present on host, don't add it.
                             # If there was any state change that would have been handled in the logic first phase logic.
-                            copy="0"
-                            break
+                            # However, check if we are to overwrite it. This is a special case.
+                            # There are rare circumstances when the user might not be able to
+                            # bump the pod version but needs it recompiled and released.
+                            if [ "${pod}:${release}" = "${podToOverwrite}" ]; then
+                                # Overwrite this particular pod:version
+                                :
+                            else
+                                copy="0"
+                                break
+                            fi
                         fi
                     done
                 fi
@@ -1029,7 +1043,8 @@ _SYNC_REMOTE_UNPACK_ARCHIVE()
 
     PRINT "Unpack archive on host to ${HOSTHOME}" "info" 0
 
-    if ! tar xzf "${archive}" -C "${tmpDir}"; then
+    # TODO: --warning=no-timestamp will not work with busybox tar
+    if ! tar xzf "${archive}" --warning=no-timestamp -C "${tmpDir}"; then
         PRINT "Could not unpack archive." "error" 0
         return 1
     fi
