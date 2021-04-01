@@ -234,6 +234,9 @@ _PRJ_GEN_INGRESS_CONFIG()
 
     local newline="
 "
+    # We need a global count of rules numbering for the ingress.
+    local RULE_COUNT=0
+
     local host=
     for host in ${hosts}; do
         PRINT "Processing pods on host ${host}" "debug" 0
@@ -312,7 +315,7 @@ _PRJ_GEN_INGRESS_CONFIG()
         fi
     done
 
-    PRINT "Variable names extracted from haproxy.conf and which should be defined in cluster-vars.env: ${variablesAll}" "info" 0
+    PRINT "Variable names extracted from haproxy.conf which could be defined in cluster-vars.env: ${variablesAll}" "info" 0
 
     local clusterConfig="${CLUSTERPATH}/cluster-vars.env"
     values="${values}${newline}$(cat "${clusterConfig}")"
@@ -3227,9 +3230,8 @@ _PRJ_EXTRACT_INGRESS()
 
     # Loop through the conf file and extract each ingress block
     local out_conf_lineno=0
-    local rule_count=0
     while [ "${out_conf_lineno}" -gt -1 ]; do
-        rule_count=$((rule_count+1))
+        RULE_COUNT=$((RULE_COUNT+1))
         local ingress=
         local weight=
         local bind=
@@ -3310,7 +3312,7 @@ _PRJ_EXTRACT_INGRESS()
 
         # Calculate criteria ACLs
         ## Do path, path_beg, path_end
-        ## path is mutuallay exclusing with path_beg and path_end (checked above),
+        ## path is mutuallay exclusive with path_beg and path_end (checked above),
         ## path_beg and path_end can be evaluated together in the same ACL
         local criteria=""  # Only used to group identical ingress criterias together
         local aclnames=""
@@ -3318,16 +3320,16 @@ _PRJ_EXTRACT_INGRESS()
 
         ## Figure out which ACLs we will have
         if [ -n "${path}" ]; then
-            aclnames="${aclnames}${aclnames:+ }PATH-${rule_count}"
+            aclnames="${aclnames}${aclnames:+ }PATH-${RULE_COUNT}"
         fi
         if [ -n "${path_beg}" ]; then
-            aclnames="${aclnames}${aclnames:+ }PATH_BEG-${rule_count}"
+            aclnames="${aclnames}${aclnames:+ }PATH_BEG-${RULE_COUNT}"
         fi
         if [ -n "${path_end}" ]; then
-            aclnames="${aclnames}${aclnames:+ }PATH_END-${rule_count}"
+            aclnames="${aclnames}${aclnames:+ }PATH_END-${RULE_COUNT}"
         fi
         if [ -n "${host}" ]; then
-            aclnames="${aclnames}${aclnames:+ }HOST-${rule_count}"
+            aclnames="${aclnames}${aclnames:+ }HOST-${RULE_COUNT}"
         fi
 
         ## Build the matching ACL rules
@@ -3335,7 +3337,7 @@ _PRJ_EXTRACT_INGRESS()
             path_beg="$(printf "%s\\n" "${path_beg}" |tr ' ' '\n' |sort |tr '\n' ' ')"
             STRING_TRIM "path_beg"
             criteria="${criteria}{ path_beg ${path_beg}}"
-            acls="acl PATH_BEG-${rule_count} path_beg ${path_beg}
+            acls="acl PATH_BEG-${RULE_COUNT} path_beg ${path_beg}
 "
         fi
 
@@ -3343,7 +3345,7 @@ _PRJ_EXTRACT_INGRESS()
             path_end="$(printf "%s\\n" "${path_end}" |tr ' ' '\n' |sort |tr '\n' ' ')"
             STRING_TRIM "path_end"
             criteria="${criteria}{ path_end ${path_end}}"
-            acls="${acls}acl PATH_END-${rule_count} path_end ${path_end}
+            acls="${acls}acl PATH_END-${RULE_COUNT} path_end ${path_end}
 "
         fi
 
@@ -3351,7 +3353,7 @@ _PRJ_EXTRACT_INGRESS()
             path="$(printf "%s\\n" "${path}" |tr ' ' '\n' |sort |tr '\n' ' ')"
             STRING_TRIM "path"
             criteria="${criteria}{ path ${path}}"
-            acls="acl PATH-${rule_count} path ${path}
+            acls="acl PATH-${RULE_COUNT} path ${path}
 "
         fi
 
@@ -3405,11 +3407,11 @@ _PRJ_EXTRACT_INGRESS()
         fi
 
         if [ -n "${host1}" ]; then
-            acls="${acls}acl HOST-${rule_count} ${host1}
+            acls="${acls}acl HOST-${RULE_COUNT} ${host1}
 "
         fi
         if [ -n "${host2}" ]; then
-            acls="${acls}acl HOST-${rule_count} ${host2}
+            acls="${acls}acl HOST-${RULE_COUNT} ${host2}
 "
         fi
 
