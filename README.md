@@ -63,3 +63,5 @@ Simplenetes has three parts:
 See the [doc/README.md](doc/README.md) for topics on HOWTOs in getting started working with Simplenets Clusters.
 
 See the [doc/COMPONENTS.md](doc/COMPONENTS.md) for an overview of all components of Simplenetes and the terminology used.
+
+Simplenetes was built by [@bashlund](https://twitter.com/bashlund) and [filippsen](https://twitter.com/mikediniz)
