@@ -5,7 +5,7 @@ Welcome to _Simplenetes_! Let's put the Dev and Ops back into DevOps.
 Simplenetes compared to Kubernetes:
 
     - Simplenetes has a 100x less code than Kubernetes.
-    - Simplenetes has less moving parts
+    - Simplenetes has fewer moving parts
         - No etcd
         - No iptables
         - Root-less containers
