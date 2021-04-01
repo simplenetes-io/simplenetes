@@ -24,10 +24,11 @@ It interacts with a few programs in the OS, such as `grep`, `awk`, `date` and ot
 
 Install straight from GitHub, as:  
 ```sh
-wget https://raw.githubusercontent.com/simplenetes-io/simplenetes/0.3.2/release/sns
+wget https://raw.githubusercontent.com/simplenetes-io/simplenetes/0.3.3/release/sns
 chmod +x sns
 sudo mv sns /usr/local/bin
 ```
+NOTE: Check the latest tag on GitHub to get the latest version.
 
 ## Installing `podc`
 See [https://github.com/simplenetes-io/podc/blob/master/README.md#install](https://github.com/simplenetes-io/podc/blob/master/README.md#install).

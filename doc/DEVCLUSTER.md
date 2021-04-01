@@ -311,7 +311,7 @@ cd laptop-cluster
 sns pod compile ingress
 ```
 
-When we add some other pod, or update any pods ingress we need to again run `sns cluster geningress` and then follow the pattern of updating configs for existing pods, so that the ingress (haproxy) gets the new config and re-reads it.
+When we add some other pod, or update any pods ingress we need to again run `sns cluster geningress` and then `sns pod updateconfig ingress`, `git commit..`, `sns cluster sync`, following the pattern of updating configs for existing pods, so that the ingress (haproxy) gets the new config and re-reads it when synced to cluster.
 
 The IngressPod will proxy traffic from the public internet to the pods within the cluster who match the ingress rules.
 The IngressPod will also (optionally) terminate TLS traffic.
