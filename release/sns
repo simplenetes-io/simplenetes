@@ -8180,7 +8180,7 @@ _PRJ_GEN_INGRESS_CONFIG()
 
                 PRINT "Generating ingress for ${pod}:${version} on ${host}" "info" 0
 
-                if ! _PRJ_EXTRACT_INGRESS "${podFile}" "${tmpDir}" "${host}" "${pod}" "${excludeClusterPorts}"; then
+                if ! _PRJ_EXTRACT_INGRESS "${podFile}" "${tmpDir}" "${host}" "${pod}" "${version}" "${excludeClusterPorts}"; then
                     return 1
                 fi
             done
@@ -10990,12 +10990,18 @@ _PRJ_EXTRACT_INGRESS()
     local pod="${1}"
     shift
 
+    local version="${1}"
+    shift
+
     local excludeClusterPorts="${1}"
     shift
 
     local ingressConf="${podfile}.ingress.conf"
 
     if [ ! -f "${ingressConf}" ]; then
+        if [ -f "${ingressConf}.inactive" ]; then
+            PRINT "Pod ${pod}:${version} has an inactive ingress. Run 'sns pod ingress ${pod}:${version} -s active' to reactive it, then regenerate ingress. If you want to." "warning" 0
+        fi
         return
     fi
 
