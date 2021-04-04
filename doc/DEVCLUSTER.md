@@ -327,6 +327,8 @@ When a Pod (be it IngressPod or any other pod) connects to a cluster port the pr
 Note that the ProxyPod is a "special" pod because it runs no containers, but instead is a native executable. However since it adheres to the Pod API it is still treated and managed as a Pod.
 The reason the ProxyPod runs natively on the Host is that it binds so many (cluster) ports that it is more efficient to skip the extra layer of running in a container.
 
+Update: this is not 100% true anymore because since podman v1.8.1-rc1 (2020-02-21) pods can bind directly to the host interface. It will get supported by `podc` soon.
+
 The ProxyPod should be attached to every Host in the Cluster, in our case it is only `laptop`.
 
 ```sh
