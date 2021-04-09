@@ -803,9 +803,11 @@ Pod commands:
 "
 }
 
-VERSION()
+SHOW_VERSION()
 {
-    printf "%s\\n" "Simplenetes 0.3.1"
+    SPACE_ENV="VERSION"
+
+    printf "sns %s\\n" "${VERSION}"
 }
 
 # options are on the format:
@@ -969,19 +971,14 @@ _GETOPTS_SWITCH()
 SNT_CMDLINE()
 {
     SPACE_SIGNATURE="[action args]"
-    SPACE_DEP="USAGE VERSION _SNT_CMDLINE FILE_REALPATH PRINT"
+    SPACE_DEP="USAGE SHOW_VERSION _SNT_CMDLINE FILE_REALPATH PRINT"
+    SPACE_ENV="CLUSTERPATH PODPATH"
 
-    if [ "${1:-help}" = "help" ]; then
+    if [ "${1:-help}" = "help" ] || [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
         USAGE
         return
-    elif [ "${1:-}" = "-h" ]; then
-        USAGE
-        return
-    elif [ "${1:-}" = "version" ]; then
-        VERSION
-        return
-    elif [ "${1:-}" = "-V" ]; then
-        VERSION
+    elif [ "${1:-}" = "version" ] || [ "${1:-}" = "-V" ] || [ "${1:-}" = "--version" ]; then
+        SHOW_VERSION
         return
     fi
 
@@ -991,38 +988,49 @@ SNT_CMDLINE()
         # When creating a cluster we skip the check about finding the correct working dir.
         :
     else
-        # Check for cluster-id.txt, upwards and cd into that dir so that sns becomes more flexible in where users execute it from.
-        # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH has defaulted to $PWD, and we allow to check upward for a cluster-id.txt
-        local dots="./"
-        if [ ! -f "cluster-id.txt" ] && [ "${CLUSTERPATH}" = "${PWD}" ]; then
-            PRINT "CLUSTERPATH not valid, searching upwards for cluster-id.txt" "debug" 0
-            while true; do
-                while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
-                    dots="../${dots}"
-                    if [ -f "${dots}/cluster-id.txt" ]; then
-                        # Found it
-                        CLUSTERPATH="$(FILE_REALPATH "${dots}")"
-                        PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug" 0
-                        break 2
-                    fi
-                done
-                PRINT "No cluster project detected, cannot continue. Type 'sns help' for list of commands." "error" 0
+        # If CLUSTERPATH is given then check so that it is pointing to a cluster.
+        if [ -n "${CLUSTERPATH}" ]; then
+            # Check so that cluster-id.txt exists.
+            if [ ! -f "${CLUSTERPATH}/cluster-id.txt" ]; then
+                PRINT "Cluster project not detected at path: \"${CLUSTERPATH}\", cannot continue. Type 'sns help' for list of commands." "error" 0
                 return 1
-            done
+            fi
+        else
+            # CLUSTERPATH not given, search for CLUSTERPATH from $PWD
+            CLUSTERPATH="${PWD}"
+            # Check for cluster-id.txt, upwards and cd into that dir so that sns becomes more flexible in where users execute it from.
+            # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH has defaulted to $PWD, and we allow to check upward for a cluster-id.txt
+            if [ ! -f "${CLUSTERPATH}/cluster-id.txt" ]; then
+                local dots="./"
+                while true; do
+                    while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
+                        dots="../${dots}"
+                        if [ -f "${dots}/cluster-id.txt" ]; then
+                            # Found it
+                            CLUSTERPATH="$(FILE_REALPATH "${dots}")"
+                            PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug" 0
+                            break 2
+                        fi
+                    done
+                    PRINT "No cluster project detected, cannot continue. Type 'sns help' for list of commands." "error" 0
+                    return 1
+                done
+            fi
         fi
     fi
 
-    if [ -z "${PODPATH}" ]; then
-        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/_pods")"
-        PRINT "Setting PODPATH: ${PODPATH}" "debug" 0
+    if [ -n "${PODPATH}" ]; then
+        if [ ! -d "${PODPATH}" ]; then
+            PRINT "PODPATH: \"${PODPATH}\" does not exist as directory." "error" 0
+            return 1
+        fi
+        PODPATH="$(FILE_REALPATH "${PODPATH}")"
     else
-        mkdir -p "${PODPATH}"
-    fi
-
-    if [ ! -d "${PODPATH}" ]; then
-        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
-        mkdir -p "${PODPATH}"
-        PRINT "Setting new PODPATH: ${PODPATH}" "debug" 0
+        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/_pods")"
+        if [ ! -d "${PODPATH}" ]; then
+            PRINT "Creating directory of PODPATH: ${PODPATH}" "info" 0
+            mkdir -p "${PODPATH}"
+        fi
     fi
 
     local status=

@@ -11,8 +11,9 @@
 
 set -u  # Will not allow for unset variables being used.
 
-CLUSTERPATH="${CLUSTERPATH:-$PWD}"
-PODPATH="$CLUSTERPATH/../pods"
+CLUSTERPATH="${CLUSTERPATH:-}"
+PODPATH="${PODPATH:-}"
+VERSION="0.4.0"
 REMOTE_PACK_RELEASEDATA="#!/usr/bin/env sh
 # Script assembled and exported by:
 #     ___ ___  ___  ____ ____  ___ __ __
@@ -22,7 +23,7 @@ REMOTE_PACK_RELEASEDATA="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pack_release_data/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -433,7 +434,7 @@ REMOTE_SET_COMMITCHAIN="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/set_commit_chain/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -686,7 +687,7 @@ REMOTE_ACQUIRE_LOCK="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/acquire_lock/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -1038,7 +1039,7 @@ REMOTE_RELEASE_LOCK="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/release_lock/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -1347,7 +1348,7 @@ REMOTE_GET_HOSTMETADATA="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/get_host_metadata/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -1599,7 +1600,7 @@ REMOTE_UPLOAD_ARCHIVE="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/upload_archive/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -1912,7 +1913,7 @@ REMOTE_UNPACK_ARCHIVE="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/unpack_archive/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -2366,7 +2367,7 @@ REMOTE_INIT_HOST="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/init_host/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -2687,7 +2688,7 @@ REMOTE_HOST_SETUP="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/setup_host/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -3520,7 +3521,7 @@ REMOTE_LOGS="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/logs/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -3848,7 +3849,7 @@ REMOTE_DAEMON_LOG="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/daemon_log/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -3914,7 +3915,7 @@ REMOTE_CREATE_SUPERUSER="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/create_superuser/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -4393,7 +4394,7 @@ REMOTE_DISABLE_ROOT="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/disable_root/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -4705,7 +4706,7 @@ REMOTE_SIGNAL="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/signal/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -5014,7 +5015,7 @@ REMOTE_ACTION="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/action/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -5323,7 +5324,7 @@ REMOTE_POD_STATUS="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pod_status/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -5643,7 +5644,7 @@ REMOTE_POD_INFO="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pod_info/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -5952,7 +5953,7 @@ REMOTE_POD_SHELL="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/pod_shell/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -6271,7 +6272,7 @@ REMOTE_HOST_SHELL="#!/usr/bin/env sh
 #  version: 1.5.0 | https://space.sh
 #
 # Node: /_remote_plumbing/host_shell/
-# Simplenetes 0.3
+# Simplenetes cluster manager
 # A set of commands used only for when compiling a release of this module into a standalone script file.
 # 
 
@@ -6637,17 +6638,11 @@ SNT_CMDLINE()
 {
     local _SPACE_NAME="SNT_CMDLINE"
 
-    if [ "${1:-help}" = "help" ]; then
+    if [ "${1:-help}" = "help" ] || [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
         USAGE
         return
-    elif [ "${1:-}" = "-h" ]; then
-        USAGE
-        return
-    elif [ "${1:-}" = "version" ]; then
-        VERSION
-        return
-    elif [ "${1:-}" = "-V" ]; then
-        VERSION
+    elif [ "${1:-}" = "version" ] || [ "${1:-}" = "-V" ] || [ "${1:-}" = "--version" ]; then
+        SHOW_VERSION
         return
     fi
 
@@ -6657,38 +6652,49 @@ SNT_CMDLINE()
         # When creating a cluster we skip the check about finding the correct working dir.
         :
     else
-        # Check for cluster-id.txt, upwards and cd into that dir so that sns becomes more flexible in where users execute it from.
-        # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH has defaulted to $PWD, and we allow to check upward for a cluster-id.txt
-        local dots="./"
-        if [ ! -f "cluster-id.txt" ] && [ "${CLUSTERPATH}" = "${PWD}" ]; then
-            PRINT "CLUSTERPATH not valid, searching upwards for cluster-id.txt" "debug" 0
-            while true; do
-                while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
-                    dots="../${dots}"
-                    if [ -f "${dots}/cluster-id.txt" ]; then
-                        # Found it
-                        CLUSTERPATH="$(FILE_REALPATH "${dots}")"
-                        PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug" 0
-                        break 2
-                    fi
-                done
-                PRINT "No cluster project detected, cannot continue. Type 'sns help' for list of commands." "error" 0
+        # If CLUSTERPATH is given then check so that it is pointing to a cluster.
+        if [ -n "${CLUSTERPATH}" ]; then
+            # Check so that cluster-id.txt exists.
+            if [ ! -f "${CLUSTERPATH}/cluster-id.txt" ]; then
+                PRINT "Cluster project not detected at path: \"${CLUSTERPATH}\", cannot continue. Type 'sns help' for list of commands." "error" 0
                 return 1
-            done
+            fi
+        else
+            # CLUSTERPATH not given, search for CLUSTERPATH from $PWD
+            CLUSTERPATH="${PWD}"
+            # Check for cluster-id.txt, upwards and cd into that dir so that sns becomes more flexible in where users execute it from.
+            # If we are inside CLUSTERPATH, but there is no cluster-id.txt, then we can conclude that CLUSTERPATH has defaulted to $PWD, and we allow to check upward for a cluster-id.txt
+            if [ ! -f "${CLUSTERPATH}/cluster-id.txt" ]; then
+                local dots="./"
+                while true; do
+                    while [ "$(FILE_REALPATH "${dots}")" != "/" ]; do
+                        dots="../${dots}"
+                        if [ -f "${dots}/cluster-id.txt" ]; then
+                            # Found it
+                            CLUSTERPATH="$(FILE_REALPATH "${dots}")"
+                            PRINT "Setting new CLUSTERPATH: ${CLUSTERPATH}" "debug" 0
+                            break 2
+                        fi
+                    done
+                    PRINT "No cluster project detected, cannot continue. Type 'sns help' for list of commands." "error" 0
+                    return 1
+                done
+            fi
         fi
     fi
 
-    if [ -z "${PODPATH}" ]; then
-        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/_pods")"
-        PRINT "Setting PODPATH: ${PODPATH}" "debug" 0
+    if [ -n "${PODPATH}" ]; then
+        if [ ! -d "${PODPATH}" ]; then
+            PRINT "PODPATH: \"${PODPATH}\" does not exist as directory." "error" 0
+            return 1
+        fi
+        PODPATH="$(FILE_REALPATH "${PODPATH}")"
     else
-        mkdir -p "${PODPATH}"
-    fi
-
-    if [ ! -d "${PODPATH}" ]; then
-        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/../pods")"
-        mkdir -p "${PODPATH}"
-        PRINT "Setting new PODPATH: ${PODPATH}" "debug" 0
+        PODPATH="$(FILE_REALPATH "${CLUSTERPATH}/_pods")"
+        if [ ! -d "${PODPATH}" ]; then
+            PRINT "Creating directory of PODPATH: ${PODPATH}" "info" 0
+            mkdir -p "${PODPATH}"
+        fi
     fi
 
     local status=
@@ -7094,10 +7100,11 @@ Pod commands:
 "
 }
 
-VERSION()
+SHOW_VERSION()
 {
-    local _SPACE_NAME="VERSION"
-    printf "%s\\n" "Simplenetes 0.3.1"
+    local _SPACE_NAME="SHOW_VERSION"
+
+    printf "sns %s\\n" "${VERSION}"
 }
 
 _SNT_CMDLINE()

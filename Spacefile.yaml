@@ -2,10 +2,12 @@
 @source: @{DIR}/include/project.sh @{DIR}/include/sync.sh @{DIR}/include/remote.sh @{DIR}/include/release.sh @{DIR}/include/utils.sh
 
 _info:
-    title: Simplenetes 0.3
+    title: Simplenetes cluster manager
 _env:
+    - VERSION: 0.4.0
+    # CLUSTERPATH and PODPATH are evaluated in build time and hardcoded into the script while in devmode.
     - CLUSTERPATH: ${CLUSTERPATH:-$PWD}
-    - PODPATH: ${PODPATH:-\$CLUSTERPATH/../pods}
+    - PODPATH: ${PODPATH:-$CLUSTERPATH/_pods}
       # Declaring these variables here to not throw undefined errors when in space mode.
       # When exporting script for release these will be defined.
     - REMOTE_PACK_RELEASEDATA:
@@ -30,7 +32,7 @@ _env:
 
 version:
     _env:
-        - RUN: VERSION
+        - RUN: SHOW_VERSION
 help:
     _env:
         - RUN: USAGE
@@ -574,9 +576,11 @@ _cmdline:
     _info:
         title: Use sns as a standalone cmd line tool
     _env:
-        # Set these variable so they are assigned at runtime
-        - CLUSTERPATH: \${CLUSTERPATH:-\$PWD}
-        - PODPATH:
+        # Set CLUSTERPATH and PODPATH so that they are assigned at runtime (hence the escapes).
+        # If CLUSTERPATH is not set from the outside the script will search upwards to find the cluster root dir.
+        - CLUSTERPATH: \${CLUSTERPATH:-}
+        # If PODPATH is not provided from the outside it will be set inside the script, using the found CLUSTERPATH.
+        - PODPATH: \${PODPATH:-}
         - RUN: SNT_CMDLINE -- "\$@"
 
 _remote_plumbing:
