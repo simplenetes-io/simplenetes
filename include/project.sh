@@ -2185,8 +2185,6 @@ _PRJ_HOST_CREATE_SUPERUSER()
         eval "${varname}=\"\${value}\""
     done
 
-    superKeyFile="$(cd "${CLUSTERPATH}/${host}" && FILE_REALPATH "${superKeyFile}")"
-
     # If keyfile does not exist, we create it.
     if [ ! -f "${superKeyFile}" ]; then
         PRINT "Create super user keyfile: ${superKeyFile}" "info" 0
@@ -2246,7 +2244,7 @@ JUMPHOST=${JUMPHOST}" >"${hostEnv3}"
 _PRJ_HOST_DISABLE_ROOT()
 {
     SPACE_SIGNATURE="host"
-    SPACE_DEP="_REMOTE_EXEC PRINT _PRJ_DOES_HOST_EXIST FILE_REALPATH STRING_TRIM"
+    SPACE_DEP="_REMOTE_EXEC PRINT _PRJ_DOES_HOST_EXIST STRING_TRIM"
     SPACE_ENV="CLUSTERPATH"
 
     local host="${1}"
