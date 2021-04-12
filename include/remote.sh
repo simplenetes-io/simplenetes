@@ -673,32 +673,34 @@ _REMOTE_HOST_SETUP()
         # Download the simplenetes daemon.
         # Check if the version changed, in such case overwrite it, overwrite the unit file and re-start the service.
 
-        local tag="0.6.1"
-        local version="Simplenetesd 0.6.1"
+        if ! OS_INSTALL_PKG "curl"; then
+            PRINT "Could not install curl" "error" 0
+        fi
+
+        local latest_version=
+        latest_version="$(curl -s -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/simplenetes-io/simplenetesd/releases/latest | grep tag_name | cut -d":" -f2 | tr -d ",|\"| ")"
 
         local binaryUpdate="true"
         local daemonFile="/bin/simplenetesd"
         if [ -f "${daemonFile}" ]; then
             # Check version
             local ver="$("${daemonFile}" -V)"
-            if [ "${ver}" = "${version}" ]; then
+            ver="${ver#* }"
+            if [ "${ver}" = "${latest_version}" ]; then
                 binaryUpdate="false"
             fi
         fi
 
         if [ "${binaryUpdate}" = "true" ]; then
-            if ! OS_INSTALL_PKG "curl"; then
-                PRINT "Could not install curl" "error" 0
-            fi
-            PRINT "Downloading daemon binary" "info" 0
-            if ! curl -sLO "https://raw.githubusercontent.com/simplenetes-io/simplenetesd/${tag}/release/simplenetesd"; then
+            PRINT "Downloading daemon binary release: ${latest_version}" "info" 0
+            if ! curl -sLO https://github.com/simplenetes-io/simplenetesd/releases/download/${latest_version}/simplenetesd; then
                 PRINT "Could not download the simplenetesd binary" "error" 0
                 return 1
             fi
             chmod +x simplenetesd
             sudo mv simplenetesd "${daemonFile}"
         else
-            PRINT "Daemon binary version already exists" "info" 0
+            PRINT "Daemon binary version ${latest_version} already exists" "info" 0
         fi
 
         # Make sure the bin is managed by systemd.
