@@ -2564,6 +2564,7 @@ _PRJ_CLUSTER_CREATE()
     mkdir -p "${CLUSTERPATH}" &&
     touch "${CLUSTERPATH}/cluster-vars.env" &&
     printf "%s\\n" "${clusterName}" >"${CLUSTERPATH}/cluster-id.txt" &&
+    printf "%s\\n" "_pods" >"${CLUSTERPATH}/.gitignore" &&
     cd "${CLUSTERPATH}" &&
     git init &&
     git add . &&
