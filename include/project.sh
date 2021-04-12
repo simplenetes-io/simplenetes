@@ -442,7 +442,13 @@ _PRJ_GET_CLUSTER_STATUS()
     # TODO: what to show here?
     # hosts status' and all pod status'?
     # also implement get-host-status ?
-    :
+    printf "%s\\n" "Sorry, but this function is not implemented yet.
+But go pipey and try:
+
+    sns pod ls -s running -q | xargs -L 1 sns pod ps
+
+to get the status of all running pods." >&2
+
 }
 
 # Check if a specific pod version's instances are ready
