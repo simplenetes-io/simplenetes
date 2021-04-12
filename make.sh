@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 # Script to export a release
 set -e
+mkdir -p release
 REMOTE_SET_COMMITCHAIN="$(space /_remote_plumbing/set_commit_chain/ -e SPACE_MUTE_EXIT_MESSAGE=1 -d)"
 REMOTE_ACQUIRE_LOCK="$(space /_remote_plumbing/acquire_lock/ -e SPACE_MUTE_EXIT_MESSAGE=1 -d)"
 REMOTE_RELEASE_LOCK="$(space /_remote_plumbing/release_lock/ -e SPACE_MUTE_EXIT_MESSAGE=1 -d)"
