@@ -1536,10 +1536,22 @@ _PRJ_COMPILE_POD()
             url2="$(cat "${hostPodGitFile}")"
         fi
         if [ -n "${url}" ]; then
-            if [ -n "${url2}" ] && [ "${url}" != "${url2}" ]; then
-                PRINT "Git url \"${url}\" of pod does not match the attached pod git url \"${url2}\" on host: ${host}" "error" 0
-                status=1
-                break
+            if [ -n "${url2}" ]; then
+                # Make https://domain and git@domain: be comparable.
+                local urlStripped="${url#*@}"
+                urlStripped="${urlStripped#*://}"
+                urlStripped="${urlStripped%.git}"
+                STRING_SUBST "urlStripped" ":" "/" 1
+                local url2Stripped="${url2#*@}"
+                url2Stripped="${url2Stripped#*://}"
+                url2Stripped="${url2Stripped%.git}"
+                STRING_SUBST "url2Stripped" ":" "/" 1
+
+                if [ "${urlStripped}" != "${url2Stripped}" ]; then
+                    PRINT "Git url \"${url}\" of pod does not match the attached pod git url \"${url2}\" on host: ${host}" "error" 0
+                    status=1
+                    break
+                fi
             fi
             if [ -z "${url2}" ]; then
                 # Create git.url file
