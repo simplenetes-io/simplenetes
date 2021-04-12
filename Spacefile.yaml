@@ -185,7 +185,11 @@ host:
                     title: Name of the host to create the super user on
                 - rootkeyfile:
                     title: Set this if the root account has a keyfile
-                - RUN: HOST_CREATE_SUPERUSER -- "${host}" "${rootkeyfile}"
+                - superuser:
+                    title: Desired name of super user (optional)
+                - superkeyfile:
+                    title: Existing key to reuse or desired path to generate key to (optional)
+                - RUN: HOST_CREATE_SUPERUSER -- "${host}" "${rootkeyfile}" "${superuser}" "${superkeyfile}"
 
         disableroot:
             _info:

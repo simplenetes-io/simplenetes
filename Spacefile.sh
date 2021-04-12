@@ -91,16 +91,10 @@ HOST_DISABLE_ROOT()
 # Looging in as root, create a new super user on the host.
 HOST_CREATE_SUPERUSER()
 {
-    SPACE_SIGNATURE="host keyfile:0"
+    SPACE_SIGNATURE="host keyfile:0 [superuser superkeyfile]"
     SPACE_DEP="_PRJ_HOST_CREATE_SUPERUSER"
 
-    local host="${1}"
-    shift
-
-    local keyfile="${1}"
-    shift
-
-    _PRJ_HOST_CREATE_SUPERUSER "${host}" "${keyfile}"
+    _PRJ_HOST_CREATE_SUPERUSER "$@"
 }
 
 REGISTRY_CONFIG()
@@ -504,18 +498,23 @@ Host commands:
     -u, --user-name=username
         If set then either the regular user already exists on the host or we set the desired name of the regular user.
 
-    -k, --key-file=userkeyfile (required if --user-name is set)
+    -k, --keyfile=userkeyfile
         If user is set and already exists on the host then also the keyfile needs to be provided.
+        A keyfile path can also be provided as the destination of where a new key will be generated,
+        in the case the key file should be placed outside of the cluster or reused between hosts.
+        If the user does not exist but a keyfile is provided then that keyfile will be (re-)used for the created user.
+        Absolute and relative paths can be provided. If relative then it is relative to the host directory.
 
     -s, --super-user-name=superusername
         If there is already an existing superuser on the host it must be set here.
         Some ISPs provide a superuser instead of root access when creating a VM.
         If setting superuser then also set the superuser keyfile with -S.
-        If superuser is set when registering the host then the create superuser command needs not to be run.
+        If superuser is set when registering the host then the create superuser command should not be run.
 
-    -S, --super-user-key-file=superuserkeyfile (recommended if --super-user-name is set)
+    -S, --super-user-keyfile=superuserkeyfile (recommended if --super-user-name is set)
         If the super user is set then also the keyfile can be set.
         If not set it defaults to 'id_rsa_super', which must be placed in the host directory.
+        Absolute and relative paths can be provided. If relative then it is relative to the host directory.
 
     -i, --internal-networks=networks
         Comma separated list of networks which are considered internal.
@@ -535,8 +534,16 @@ Host commands:
     If the superuser was already set when registering the host then this command will not run.
     Run this once after 'host register'.
 
-    -k, --key-file=rootkeyfile
+    -k, --root-keyfile=rootkeyfile
         rootkeyfile is optional, if not set then password is required to login as root.
+
+    -s, --super-user-name=superusername
+        Optionally set the desired name of the superuser to create.
+
+    -S, --super-user-keyfile=superuserkeyfile
+        Point to en existing keyfile to reuse or where to generate the new file.
+        If not set it defaults to 'id_rsa_super' which will be placed in the host directory.
+        Absolute and relative paths can be provided. If relative then it is relative to the host directory.
 
   host setup disableroot <host>
     Use the super user account to disable the root login on the host.
@@ -818,7 +825,7 @@ SHOW_VERSION()
 _GETOPTS()
 {
     SPACE_SIGNATURE="options minPositional maxPositional [args]"
-    SPACE_DEP="_GETOPTS_SWITCH PRINT STRING_SUBSTR STRING_INDEXOF STRING_ESCAPE"
+    SPACE_DEP="_GETOPTS_SWITCH PRINT STRING_SUBSTR STRING_INDEXOF"
 
     local options="${1}"
     shift
@@ -1121,9 +1128,9 @@ etc
             local _out_r=
             local _out_arguments=
 
-            if ! _GETOPTS "_out_j=-j,--jump-host/* _out_e=-e,--expose/* _out_r=-r,--router-address/* _out_d=-d,--dir-home/* _out_a=-a,--address/* _out_u=-u,--user-name/* _out_k=-k,--key-file/* _out_s=-s,--super-user-name/* _out_S=-S,--super-user-name/* _out_i=-i,--internal-networks/* _out_r=-r,--router-address/*" 1 1 "$@"; then
+            if ! _GETOPTS "_out_j=-j,--jump-host/* _out_e=-e,--expose/* _out_r=-r,--router-address/* _out_d=-d,--dir-home/* _out_a=-a,--address/* _out_u=-u,--user-name/* _out_k=-k,--keyfile/* _out_s=-s,--super-user-name/* _out_S=-S,--super-user-keyfile/* _out_i=-i,--internal-networks/* _out_r=-r,--router-address/*" 1 1 "$@"; then
 
-                printf "Usage: sns host register -a|--address= [-j|--jump-host= -e|--expose= -d|--dir-home= -u|--user-name= -k|--key-file= -s|--super-user-name= -S|--super-use-key-file= -i|--internal-networks= -r|--router-address=]\\n" >&2
+                printf "Usage: sns host register -a|--address= [-j|--jump-host= -e|--expose= -d|--dir-home= -u|--user-name= -k|--keyfile= -s|--super-user-name= -S|--super-user-keyfile= -i|--internal-networks= -r|--router-address=]\\n" >&2
                 return 1
             fi
             HOST_CREATE "${_out_arguments}" "${_out_j}" "${_out_e}" "${_out_d}" "${_out_a}" "${_out_u}" "${_out_k}" "${_out_s}" "${_out_S}" "${_out_i}" "${_out_r}"
@@ -1133,13 +1140,15 @@ etc
 
             if [ "${object}" = "superuser" ]; then
                 local _out_k=
+                local _out_s=
+                local _out_S=
                 local _out_arguments=
 
-                if ! _GETOPTS "_out_k=-k,--key-file/*" 1 1 "$@"; then
-                    printf "Usage: sns host setup superuser <host> [-k|--key-file=]\\n" >&2
+                if ! _GETOPTS "_out_k=-k,--root-keyfile/* _out_s=-s,--super-user-name/* _out_S=-S,--super-user-keyfile/*" 1 1 "$@"; then
+                    printf "Usage: sns host setup superuser <host> [-k|--root-keyfile=rootkeyfile] [-s|--super-user-name=] [-S|--super-user-keyfile=] \\n" >&2
                     return 1
                 fi
-                HOST_CREATE_SUPERUSER "${_out_arguments}" "${_out_k}"
+                HOST_CREATE_SUPERUSER "${_out_arguments}" "${_out_k}" "${_out_s}" "${_out_S}"
             elif [ "${object}" = "disableroot" ]; then
                 local _out_arguments=
 
