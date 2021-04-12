@@ -918,7 +918,6 @@ _GETOPTS()
         fi
 
         # Store arguments in variable
-        STRING_ESCAPE "value"
         eval "${_out_VARNAME}=\"\${value}\""
     done
 
