@@ -30,6 +30,7 @@ In short: Simplenetes takes the raisins out of the cake, but it does not have ev
 
 While Kubernetes is "true cloud computing" in the sense that it can expand your cluster with more worker machines as needed and it can request resources from the environment as needed such as persistent disk, Simplenetes doesn't go there because that is when DevOps becomes MagicOps.
 
+
 ## When should I use Simplenetes?
 
 In what cases should I really consider using Simplenetes?
@@ -51,7 +52,6 @@ In which cases should I *not* use Simplenetes over Kubernetes?
     6.  Your boss has pointy-hair.
 
 
-
 ## Simplenetes explained
 
 Simplenetes has three parts:
@@ -60,8 +60,21 @@ Simplenetes has three parts:
     - `podc` - the pod compiler which takes yaml specs into executable standalone shell scripts managing a pod
     - `simplenetesd` - the daemon which runs on each host to start and stop pods.
 
-See the [doc/README.md](doc/README.md) for topics on HOWTOs in getting started working with Simplenets Clusters.
+See the [doc/README.md](doc/README.md) for topics on HOWTOs in getting started working with Simplenetes Clusters.
 
-See the [doc/COMPONENTS.md](doc/COMPONENTS.md) for an overview of all components of Simplenetes and the terminology used.
+
+## Install
+`sns` is a standalone executable, written in POSIX-compliant shell script and will run anywhere there is Bash/Dash/Ash installed.
+
+```sh
+LATEST_VERSION=$(curl -L -s https://github.com/simplenetes-io/simplenetes/releases/latest)
+LATEST_VERSION=$(echo $LATEST_VERSION | sed -e 's/.*tag_name\=\([^"]*\)\&.*/\1/')
+wget https://github.com/simplenetes-io/simplenetes/releases/download/$LATEST_VERSION/sns
+chmod +x sns
+sudo mv sns /usr/local/bin
+```
+
+For further instructions, please refer to the [documentation](https://github.com/simplenetes-io/simplenetes/blob/master/doc/INSTALLING.md).
+
 
 Simplenetes was built by [@bashlund](https://twitter.com/bashlund) and [filippsen](https://twitter.com/mikediniz)
