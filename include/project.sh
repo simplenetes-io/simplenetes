@@ -2197,17 +2197,20 @@ _PRJ_HOST_CREATE_SUPERUSER()
         eval "${varname}=\"\${value}\""
     done
 
+    # make tmp absolut path in regards to host dir
+    local superKeyFileAbsolute="$(cd "${CLUSTERPATH}/${host}" && FILE_REALPATH "${superKeyFile}")"
+
     # If keyfile does not exist, we create it.
-    if [ ! -f "${superKeyFile}" ]; then
-        PRINT "Create super user keyfile: ${superKeyFile}" "info" 0
-        if ! SSH_KEYGEN "${superKeyFile}"; then
+    if [ ! -f "${superKeyFileAbsolute}" ]; then
+        PRINT "Create super user keyfile: ${superKeyFileAbsolute}" "info" 0
+        if ! SSH_KEYGEN "${superKeyFileAbsolute}"; then
             PRINT "Could not genereate keyfile" "error" 0
             return 1
         fi
     fi
 
-    local pubKey="${superKeyFile}.pub"
-    if [ ! -f "${superKeyFile}" ]; then
+    local pubKey="${superKeyFileAbsolute}.pub"
+    if [ ! -f "${pubKey}" ]; then
         PRINT "Could not find ${pubKey} file" "error" 0
         return 1
     fi
@@ -2221,7 +2224,7 @@ PORT=${PORT}
 JUMPHOST=${JUMPHOST}" >"${hostEnv2}"
 
     local status=
-    cat "${pubKey}" |_REMOTE_EXEC "${host}:${hostEnv2}" "create_superuser" "${superUser}"
+    cat "${pubKey}" | _REMOTE_EXEC "${host}:${hostEnv2}" "create_superuser" "${superUser}"
     status="$?"
     rm "${hostEnv2}"
     if [ "${status}" -ne 0 ]; then
@@ -2436,14 +2439,8 @@ _PRJ_HOST_CREATE()
         expose="${expose}${expose:+ }${port}"
     fi
 
-    if [ -n "${userKey}" ] || [ -n "${user}" ]; then
-        if [ -z "${user}" ]; then
-            PRINT "If providing a user key you must also provide the user name" "error" 0
-            return 1
-        fi
-        if [ -n "${userKey}" ] && [ ! -f "${userKey}" ]; then
-            PRINT "User key ${userKey} does not exist." "warning" 0
-        fi
+    if [ -n "${userKey}" ] && [ ! -f "${userKey}" ]; then
+        PRINT "Provided user key ${userKey} does not exist, it will be generated." "warning" 0
     fi
 
     if [ -n "${superUserKey}" ] || [ -n "${superUser}" ]; then
